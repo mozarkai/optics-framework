@@ -497,8 +497,8 @@ class ActionKeyword:
         ``value`` is the text the keyword types: self-heal may choose where it goes, but never sees it.
         A covered point is skipped like a failed action; a keyword that only reads it sets ``allow_covered``.
 
-        With popup rules set, a rule that checks before each step runs first, and a lookup that fails is checked
-        for a popup before self-heal: one that a rule dismisses makes the step look again.
+        With popup rules set, a rule that checks before each step runs first, also before each retry, and a lookup
+        that fails is checked for a popup before self-heal: one that a rule dismisses makes the step look again.
         """
         self.strategy_manager.require_screen()
         aoi_x = _parse_aoi_param(aoi[0], 0)
@@ -509,8 +509,9 @@ class ActionKeyword:
         lookup_index = int(index)
         if self._popup.active:
             self._popup.begin_step(func_name, element)
-            self._raise_popup_stop(self._popup.before_step())
         while True:
+            if self._popup.active:
+                self._raise_popup_stop(self._popup.before_step())
             with one_capture_per_source():
                 screenshot_np = self._capture_screenshot_safe()
                 if is_aoi_used and screenshot_np is not None and self.capture_output_dir is not None:
