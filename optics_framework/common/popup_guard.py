@@ -40,12 +40,17 @@ class Outcome:
     code: Optional[Code] = None
     stop_run: bool = False
     message: str = ""
+    cause: Optional[BaseException] = None
 
     def error(self) -> OpticsError:
-        return OpticsError(self.code or Code.E0408, message=self.message, details={"stop_run": self.stop_run})
+        return OpticsError(self.code or Code.E0408, message=self.message, details={"stop_run": self.stop_run}, cause=self.cause)
 
 
 NO_POPUP = Outcome(Verdict.NONE)
+
+
+class ModuleUnavailable(Exception):
+    """A rule names a module the session cannot run: a setup error, not a popup that stayed."""
 
 
 @dataclass
@@ -57,6 +62,7 @@ class PopupIO:
     tap_at: Callable[[int, int], None]
     back: Callable[[], None]
     alert: Callable[[str], None]
+    run_module: Callable[[str], None]
     read_alert: Callable[[], Optional[Tuple[str, List[str]]]]
     screenshot: Callable[[], Any]
     save_image: Callable[[Any, str], Optional[str]]
@@ -143,6 +149,7 @@ class PopupGuard:
         self._step: dict = {}
         self._step_counts: Counter = Counter()
         self._screen: Optional[PopupScreen] = None
+        self._running: set[str] = set()
 
     @property
     def active(self) -> bool:
@@ -183,12 +190,16 @@ class PopupGuard:
 
     def _inspect(self, rules: List[PopupRule], check: str, may_be_unknown: bool = False) -> Outcome:
         screen = self._read()
+        being_dismissed = False
         for rule in rules:
             matched = screen.matches(rule.detect)
-            if matched is not None:
+            if matched is None:
+                internal_logger.debug("Popup guard: rule '%s' did not match the screen (%s)", rule.name, screen.missed)
+            elif rule.name in self._running:
+                being_dismissed = True
+            else:
                 return self._handle(rule, screen, check, matched)
-            internal_logger.debug("Popup guard: rule '%s' did not match the screen (%s)", rule.name, screen.missed)
-        if may_be_unknown and screen.has_dialog():
+        if may_be_unknown and not being_dismissed and screen.has_dialog():
             return self._unknown(screen, check)
         self._event(check, Verdict.NONE.value, screen=screen)
         return NO_POPUP
@@ -215,7 +226,13 @@ class PopupGuard:
         self._step_counts[rule.name] = step_n
         run.attempts[rule.name] += 1
         started = self._clock()
-        acted = self._act(rule, screen)
+        try:
+            acted = self._act(rule, screen)
+        except ModuleUnavailable as e:
+            return end(
+                Verdict.STOP, Code.E0601, f"Popup '{rule.name}' runs a module this session does not have",
+                evidence=replace(seen, action=self._describe(rule), source=True), cause=e.__cause__,
+            )
         self._screen = None
         stop, described = rule.then == "stop_run", acted or self._describe(rule)
         seen = replace(seen, action=described)
@@ -238,6 +255,8 @@ class PopupGuard:
     def _act(self, rule: PopupRule, screen: PopupScreen) -> Optional[str]:
         """What the rule did, or None when it did nothing that can dismiss the popup."""
         action = rule.action
+        if action.type == "module":
+            return self._run_module(rule)
         if action.type == "tap":
             return next((f"tap {t}" for t in (action.target, action.fallback) if t and self._tapped(screen, t, rule)), None)
         try:
@@ -250,6 +269,24 @@ class PopupGuard:
         except Exception as e:  # noqa: BLE001 - an action that fails leaves the popup up and the caller reports that
             internal_logger.info("Popup guard: '%s' action failed: %s", rule.name, e)
             return None
+        return self._describe(rule)
+
+    def _run_module(self, rule: PopupRule) -> Optional[str]:
+        """Run the rule's module with popup handling still on, so a popup inside it is handled too. Its steps start their
+        own step counts, so the popup's own are put back afterwards. While it runs, the rule leaves its own popup alone,
+        so a step of the module is not stopped by the popup the module is there to dismiss, and the rule cannot start itself."""
+        step, counts = self._step, self._step_counts
+        self._running.add(rule.name)
+        try:
+            self._io.run_module(rule.action.target or "")
+        except Exception as e:  # noqa: BLE001 - a module that fails leaves the popup up and the caller reports that
+            if getattr(e, "code", None) == Code.E0601:
+                raise ModuleUnavailable from e
+            internal_logger.info("Popup guard: '%s' module failed: %s", rule.name, e)
+            return None
+        finally:
+            self._running.discard(rule.name)
+            self._step, self._step_counts, self._screen = step, counts, None
         return self._describe(rule)
 
     def _tapped(self, screen: PopupScreen, target: str, rule: PopupRule) -> bool:
@@ -301,7 +338,7 @@ class PopupGuard:
     def _end(
         self, verdict: Verdict, code: Optional[Code], message: str, *, screen: PopupScreen, check: str,
         rule: Optional[PopupRule] = None, matched: Optional[List[str]] = None, stop_run: bool = False,
-        evidence: Evidence = Evidence(),
+        evidence: Evidence = Evidence(), cause: Optional[BaseException] = None,
     ) -> Outcome:
         run = self._run()
         name = Verdict.LIMIT if code == Code.E0407 else verdict
@@ -320,7 +357,7 @@ class PopupGuard:
             "Popup %s: rule=%s action=%s%s", name.value, rule.name if rule else "-", evidence.action or "-",
             f" in {evidence.gone_ms}ms" if evidence.gone_ms is not None else "",
         )
-        return Outcome(verdict, code, stop_run, message)
+        return Outcome(verdict, code, stop_run, message, cause)
 
     def _event(self, check: str, verdict: str, *, screen: PopupScreen, rule: Optional[PopupRule] = None, **fields: Any) -> None:
         run = self._run()

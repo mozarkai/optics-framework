@@ -29,11 +29,7 @@ from optics_framework.common.config_handler import (
 )
 from optics_framework.common.popup_guard import PopupRun
 from optics_framework.common.session_manager import SessionManager
-from optics_framework.api.app_management import AppManagement
-from optics_framework.api.action_keyword import ActionKeyword
-from optics_framework.api.verifier import Verifier
-from optics_framework.api.flow_control import FlowControl
-from optics_framework.common.runner.keyword_register import KeywordRegistry
+from optics_framework.api.keywords import build_keywords
 from optics_framework.common import utils
 from optics_framework.common.models import (
     TemplateData,
@@ -338,18 +334,11 @@ class Optics:
             raise ValueError(f"Failed to create session: {e}") from e
 
         session = self.session_manager.sessions[self.session_id]
-        registry = KeywordRegistry()
-        self.action_keyword = session.optics.build(ActionKeyword)
-        self.app_management = session.optics.build(AppManagement)
-        self.verifier = session.optics.build(Verifier)
-
-        registry.register(self.action_keyword)
-        registry.register(self.app_management)
-        registry.register(self.verifier)
-        self.flow_control = FlowControl(
-            session=session, keyword_map=registry.keyword_map
-        )
-        registry.register(self.flow_control)
+        keywords = build_keywords(session)
+        self.action_keyword = keywords.action_keyword
+        self.app_management = keywords.app_management
+        self.verifier = keywords.verifier
+        self.flow_control = keywords.flow_control
 
     @keyword("Setup From File")
     def setup_from_file(self, config_file_path: str) -> None:

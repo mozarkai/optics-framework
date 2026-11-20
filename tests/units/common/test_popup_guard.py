@@ -34,6 +34,8 @@ class Device:
         self.source, self.after, self.dismisses, self.read_fails = source, after, set(dismisses), read_fails
         self.dismiss_points = set(dismiss_points)
         self.reads = 0
+        self.modules = []
+        self.on_module = None
         self.taps, self.points, self.backs, self.alerts, self.saved_images, self.saved_text = [], [], 0, [], [], []
 
     def read_source(self):
@@ -63,6 +65,11 @@ class Device:
         self.source = self.after
         self.system_alert = None
 
+    def run_module(self, name):
+        self.modules.append(name)
+        if self.on_module:
+            self.on_module(name)
+
     def read_alert(self):
         self.alert_reads += 1
         if self.read_fails_alert:
@@ -74,7 +81,7 @@ class Device:
 
     def io(self):
         return PopupIO(
-            read_source=self.read_source, screen_of=AppiumScreen, tap=self.tap, tap_at=self.tap_at, back=self.back, alert=self.alert, read_alert=self.read_alert,
+            read_source=self.read_source, screen_of=AppiumScreen, tap=self.tap, tap_at=self.tap_at, back=self.back, alert=self.alert, run_module=self.run_module, read_alert=self.read_alert,
             screenshot=lambda: "frame",
             save_image=lambda img, name: self.saved_images.append(name) or f"{name}.png",
             save_text=lambda text, name: self.saved_text.append((name, text)) or f"{name}.xml",
@@ -168,6 +175,65 @@ def test_the_per_step_and_the_per_run_limits_fail_the_step_with_e0407_without_ta
     assert codes == [None, None, Code.E0407, None, Code.E0407], "step a stops at 2, and the run stops at 3"
     assert len(device.taps) == 3
     assert run.count("Rate Us", Verdict.LIMIT) == 2
+
+
+def test_a_rule_can_run_a_module_to_dismiss_the_popup():
+    device = Device(RATE_US)
+    device.on_module = lambda name: setattr(device, "source", PLAIN)
+    g, run = guard(device, rule(action={"type": "module", "target": "Dismiss Rate Us"}))
+    assert g.on_failure().verdict is Verdict.HANDLED
+    assert device.modules == ["Dismiss Rate Us"] and device.taps == []
+    assert run.drain()[0]["action"] == "module Dismiss Rate Us"
+
+
+def test_a_module_that_leaves_the_popup_up_or_fails_stops_the_step():
+    stays = Device(RATE_US)
+    g, _ = guard(stays, rule(action={"type": "module", "target": "Nothing"}))
+    assert g.on_failure().code == Code.E0408
+    broken = Device(RATE_US)
+    broken.on_module = lambda name: (_ for _ in ()).throw(RuntimeError("module failed"))
+    g, _ = guard(broken, rule(action={"type": "module", "target": "Broken"}))
+    assert g.on_failure().code == Code.E0408
+
+
+def test_a_popup_inside_the_module_is_handled_too_and_the_outer_step_keeps_its_own_count():
+    device = Device(RATE_US, after=PLAIN, dismisses=("Accept all",))
+    cookies = android(node(text="Balance", package="in.app"), node(resource_id="android:id/alertTitle", text="We use cookies"),
+                      node("android.widget.Button", text="Accept all"))
+    g, run = guard(
+        device, rule(max_per_step=2, action={"type": "module", "target": "Dismiss Rate Us"}),
+        rule("Cookies", detect={"text_contains": ["We use cookies"]}, action={"type": "tap", "target": "Accept all"}),
+    )
+
+    def module(name):
+        device.source = cookies
+        g.begin_step("tap", "Close")
+        assert g.on_failure().verdict is Verdict.HANDLED, "the popup inside the module met the cookies rule"
+        device.source = PLAIN
+
+    device.on_module = module
+    assert g.on_failure().verdict is Verdict.HANDLED
+    assert (run.count("Rate Us"), run.count("Cookies")) == (1, 1)
+    device.source = RATE_US
+    assert g.on_failure().verdict is Verdict.HANDLED
+    device.source = RATE_US
+    assert g.on_failure().code == Code.E0407, "the outer count went on from 2 handled, though the module's steps began their own"
+
+
+def test_a_popup_the_rules_own_module_is_working_on_is_left_to_that_module_and_the_rule_does_not_start_again():
+    device = Device(RATE_US)
+    g, run = guard(device, rule(check="before_every_step", action={"type": "module", "target": "Dismiss Rate Us"}))
+    inner = []
+
+    def module(name):
+        g.begin_step("press_element", "Maybe Later")
+        inner.extend([g.before_step().verdict, g.on_failure().verdict])
+        device.source = PLAIN
+
+    device.on_module = module
+    assert g.before_step().verdict is Verdict.HANDLED
+    assert inner == [Verdict.NONE, Verdict.NONE], "the module's own steps are not stopped by the popup they dismiss"
+    assert device.modules == ["Dismiss Rate Us"] and run.count("Rate Us") == 1
 
 
 @pytest.mark.parametrize("then, ends", [("fail_step", False), ("stop_run", True)])

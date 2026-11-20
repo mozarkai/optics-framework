@@ -51,9 +51,8 @@ from optics_framework.common.logging_config import (
     internal_logger,
     initialize_handlers,
 )
-from optics_framework.common.models import ModuleData, ElementData, ApiData, TemplateData
+from optics_framework.common.models import ElementData, ApiData, TemplateData
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
@@ -65,8 +64,15 @@ from optics_framework.common.nl_agent import (
     AgentStep,
     AgentResult,
 )
-from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
-from optics_framework.helper.execute import discover_templates, identify_file_content
+from optics_framework.api import ActionKeyword
+from optics_framework.api.keywords import build_keywords
+from optics_framework.helper.execute import (
+    discover_templates,
+    find_files,
+    identify_file_content,
+    load_modules,
+    merge_project_popup_rules,
+)
 
 
 # Canonical optics logger names, referenced in several handler-management helpers.
@@ -288,6 +294,7 @@ def _compose_config(folder_path: Optional[str]) -> Config:
         raise OpticsError(
             Code.E0501, message="No enabled source in config.yaml's elements_sources."
         )
+    config.popup_rules = merge_project_popup_rules(config.popup_rules, folder_path)
     return config
 
 
@@ -328,11 +335,11 @@ class LiveController:
 
         self.templates: TemplateData = discover_templates(self.folder_path)
         self.manager = SessionManager()
-        # No test cases yet; elements are loaded lazily on first use.
+        # No test cases yet; elements are loaded lazily on first use. Modules are loaded now, so a popup rule can run one.
         self.session_id: str = self.manager.create_session(
             self.config,
             None,
-            ModuleData(),
+            load_modules(find_files(self.folder_path)[1]),
             ElementData(),
             ApiData(),
             self.templates,
@@ -432,14 +439,9 @@ class LiveController:
 
     def _build_registry(self) -> None:
         """Build the keyword map exactly as the normal runner does (RunnerFactory)."""
-        registry = KeywordRegistry()
-        action_keyword = self.session.optics.build(ActionKeyword)
-        registry.register(action_keyword)
-        registry.register(self.session.optics.build(AppManagement))
-        registry.register(self.session.optics.build(Verifier))
-        registry.register(FlowControl(session=self.session, keyword_map=registry.keyword_map))
-        self.keyword_map = registry.keyword_map
-        self._action_keyword = action_keyword
+        keywords = build_keywords(self.session)
+        self.keyword_map = keywords.keyword_map
+        self._action_keyword = keywords.action_keyword
 
     # -- Keyword introspection (for autocomplete + ghost text) --------------------
 
@@ -642,6 +644,7 @@ class LiveController:
         raw: str, func_name: str, params: List[str], start: float,
     ) -> ActionResult:
         """Try the fallback combinations in order; return the first success."""
+        self.ensure_elements_loaded()
         try:
             value, strategy = fallback.run(param_candidates, partial(self._run_single_combo, method), f"'{func_name}'")
         # Surfaced to the user, never crashes the controller.
@@ -1154,12 +1157,12 @@ class LiveController:
         if caps is not None:
             caps["udid"] = udid
             caps["deviceName"] = udid
-        existing_elements = self.session.elements
+        existing_elements, existing_modules = self.session.elements, self.session.modules
         self.manager.terminate_session(self.session_id)
         self.session_id = self.manager.create_session(
             self.config,
             None,
-            ModuleData(),
+            existing_modules,
             existing_elements if existing_elements is not None else ElementData(),
             ApiData(),
             self.templates,

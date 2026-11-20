@@ -18,6 +18,7 @@ from tests.units.popup_helpers import rule_dict
     (rule_dict(detect={"xpath": "//a["}), "xpath is not valid"),
     (rule_dict(action={"type": "tap"}), "needs a target"),
     (rule_dict(action={"type": "alert"}), "needs a target"),
+    (rule_dict(action={"type": "module"}), "needs a target"),
     (rule_dict(action={"type": "none"}), "retry_step needs an action"),
     (rule_dict(check="sometimes"), "check"),
     (rule_dict(then="explode"), "then"),

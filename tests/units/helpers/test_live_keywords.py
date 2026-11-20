@@ -31,13 +31,13 @@ def _controller(keyword_map):
     ctrl.recorded = []
     ctrl.saved = True
     ctrl._focus = Focus()
+    ctrl._elements_loaded = True
     return ctrl
 
 
 def test_a_live_keyword_sees_the_suite_name_of_its_locator():
     seen = []
     ctrl = _controller({"press_element": lambda element: seen.append(test_context.element_names.get({}).get(element))})
-    ctrl._elements_loaded = True
     ctrl.session = SimpleNamespace(elements=ElementData(elements={"login_button": ["//login"]}))
 
     assert ctrl.run_keyword("press_element ${login_button}").status is ActionStatus.PASS
@@ -47,7 +47,6 @@ def test_a_live_keyword_sees_the_suite_name_of_its_locator():
 def test_an_agent_call_keeps_the_suite_name_when_other_params_follow():
     seen = []
     ctrl = _controller({"press_element": lambda element, timeout: seen.append(test_context.element_names.get({}).get(element))})
-    ctrl._elements_loaded = True
     ctrl.session = SimpleNamespace(elements=ElementData(elements={"login_button": ["//login"]}))
 
     ctrl._agent_call("press_element", {"element": "${login_button}", "timeout": "5"})

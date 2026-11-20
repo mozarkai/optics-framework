@@ -362,14 +362,14 @@ class PopupDetect(BaseModel):
 
 
 class PopupAction(BaseModel):
-    """What to do about a popup. ``fallback`` is tried when ``target`` is not found."""
-    type: Literal["tap", "back", "alert", "none"] = "none"
+    """What to do about a popup. ``fallback`` is tried when ``target`` is not found; for ``module`` the target is a module name."""
+    type: Literal["tap", "back", "alert", "module", "none"] = "none"
     target: Optional[str] = None
     fallback: Optional[str] = None
 
     @model_validator(mode="after")
-    def _tap_and_alert_need_a_target(self) -> "PopupAction":
-        if self.type in ("tap", "alert") and not self.target:
+    def _tap_alert_and_module_need_a_target(self) -> "PopupAction":
+        if self.type in ("tap", "alert", "module") and not self.target:
             raise ValueError(f"action '{self.type}' needs a target")
         return self
 

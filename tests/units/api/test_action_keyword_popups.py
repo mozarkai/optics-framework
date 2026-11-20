@@ -1,14 +1,17 @@
 """press_element with popup rules: a fake screen, a fake strategy manager and a fake driver, no device."""
 import os
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
 from optics_framework.api import ActionKeyword
+from optics_framework.api.keywords import build_keywords
 from optics_framework.common.config_handler import Config
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.models import ElementData, ModuleData
 from optics_framework.common.strategies import LocateResult
 from optics_framework.engines.drivers.appium_popup import AppiumScreen
 from tests.units.popup_helpers import rule
@@ -110,6 +113,34 @@ def test_a_step_whose_action_ran_and_failed_is_never_retried_after_the_popup_is_
     assert caught.value.code == Code.X0201
     assert phone.pressed == [CARD, MAYBE_LATER], "the popup was dismissed, but the tap was not repeated"
     assert [e["verdict"] for e in ak._popup_run().drain()] == ["handled"]
+
+
+def _with_modules(ak, phone, modules):
+    session = SimpleNamespace(
+        optics=SimpleNamespace(build=lambda cls: ak if cls is ActionKeyword else object()),
+        modules=ModuleData(modules=modules), elements=ElementData(), config_handler=MagicMock(), driver=phone.driver,
+    )
+    return build_keywords(session).action_keyword
+
+
+def test_a_rule_that_runs_a_module_dismisses_the_popup_with_the_modules_own_steps():
+    phone = Phone()
+    ak, _ = keyword(phone, rule(action={"type": "module", "target": "Close Rate Us"}))
+    _with_modules(ak, phone, {"Close Rate Us": [("press element", ["Maybe Later"])]}).press_element("Balance card")
+    assert phone.pressed == [MAYBE_LATER, CARD]
+    assert [(e["verdict"], e["action"]) for e in ak._popup_run().drain() if e["verdict"] != "none"] == [
+        ("handled", "module Close Rate Us")
+    ]
+
+
+def test_a_rule_whose_module_the_session_does_not_have_fails_the_step_with_e0601_not_a_popup_that_stayed():
+    phone = Phone()
+    ak, _ = keyword(phone, rule(action={"type": "module", "target": "Close Rate Us"}))
+    with pytest.raises(OpticsError) as caught:
+        _with_modules(ak, phone, {}).press_element("Balance card")
+    assert caught.value.code == Code.E0601
+    assert "Close Rate Us" in str(caught.value)
+    assert phone.pressed == []
 
 
 def test_without_rules_nothing_changes_and_the_page_source_is_never_read():
