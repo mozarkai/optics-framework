@@ -24,7 +24,7 @@ ON_SCREEN_ERROR_CASE = "on-screen-error-detection"
 # NOTE: kept platform-neutral on purpose — these names are common across
 # Android (uiautomator) and iOS (XCUITest) page sources. Add new on-screen-text
 # attributes here as other element sources are supported.
-_MOBILE_TEXT_ATTRS = ("text", "content-desc", "label", "value", "hint", "name")
+MOBILE_TEXT_ATTRS = ("text", "content-desc", "label", "value", "hint", "name")
 
 # Regex fallback for when the XML is malformed and ElementTree can't parse it.
 # The leading ``(?<![\w-])`` ensures we only match a *whole* attribute name and
@@ -71,7 +71,7 @@ def extract_visible_text(page_source: str) -> str:
         root = ET.fromstring(page_source)  # nosec B314
         texts: List[str] = []
         for elem in root.iter():
-            for attr in _MOBILE_TEXT_ATTRS:
+            for attr in MOBILE_TEXT_ATTRS:
                 val = (elem.get(attr) or "").strip()
                 if val:
                     texts.append(val)

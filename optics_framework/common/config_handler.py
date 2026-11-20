@@ -5,14 +5,16 @@ from collections.abc import Mapping
 from typing import Any, Dict, List, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import initialize_handlers, is_secret_entry, register_config_secret
+from optics_framework.common.models import PopupRule, require_unique_names
 
 _ENV_REFERENCE = re.compile(r"\$(?:\$|\{([A-Za-z_]\w*)(?::-([^}]*))?\}|([A-Za-z_]\w*))")
 _RELATIVE_PREFIXES = ("./", "../")
 _OUTPUT_PATH_FIELDS = frozenset({"project_path", "execution_output_path", "log_path", "json_path"})
+_VERBATIM_FIELDS = frozenset({"popup_rules"})
 # Expanded by the driver at connect time, which also masks the referenced values out of its errors.
 _DRIVER_EXPANDED = {"playwright": frozenset({"url", "headers"})}
 _BASE_KEY = "$from"
@@ -92,14 +94,17 @@ def resolve_config_file(data: dict, base_dir: str) -> dict:
         data = dict(data)
         data.setdefault("elements_sources", data.pop("element_sources"))
     resolver = _Resolver(base_dir)
-    resolved = {
-        key: [resolver.driver(entry) for entry in value]
-        if key == "driver_sources" and isinstance(value, list)
-        else resolver.value(value, key not in _OUTPUT_PATH_FIELDS)
-        for key, value in data.items()
-    }
+    resolved = {key: _resolve_field(resolver, key, value) for key, value in data.items()}
     _register_secret_values(resolved)
     return resolved
+
+
+def _resolve_field(resolver: "_Resolver", key: str, value: Any) -> Any:
+    if key in _VERBATIM_FIELDS:
+        return value
+    if key == "driver_sources" and isinstance(value, list):
+        return [resolver.driver(entry) for entry in value]
+    return resolver.value(value, key not in _OUTPUT_PATH_FIELDS)
 
 
 class _Resolver:
@@ -241,6 +246,14 @@ class Config(BaseModel):
     ai_self_heal: bool = False
     strict_element_match: bool = False
     nl_agent: NLAgentConfig = Field(default_factory=NLAgentConfig)
+    popup_rules: List[PopupRule] = Field(default_factory=list)
+    permissions: Dict[str, Literal["allow", "deny"]] = Field(default_factory=dict)
+
+    @field_validator("popup_rules")
+    @classmethod
+    def _unique_popup_rule_names(cls, rules: List[PopupRule]) -> List[PopupRule]:
+        require_unique_names(rules, "popup_rules")
+        return rules
 
     def __init__(self, **data):
         super().__init__(**data)

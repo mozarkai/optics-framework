@@ -49,6 +49,7 @@ class Code(StrEnum):
     W0203 = "W0203"
     E0204 = "E0204"
     E0205 = "E0205"
+    E0206 = "E0206"
 
     # Screenshot issues
     E0301 = "E0301"
@@ -65,6 +66,9 @@ class Code(StrEnum):
     W0404 = "W0404"
     E0405 = "E0405"
     E0406 = "E0406"
+    E0407 = "E0407"
+    E0408 = "E0408"
+    E0409 = "E0409"
 
     # Config/File issues
     E0501 = "E0501"
@@ -196,6 +200,12 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         category=Category.ELEMENT,
         default_status=400,
     ),
+    "E0206": ErrorSpec(
+        code=Code.E0206,
+        default_message="Unknown popup on screen",
+        category=Category.ELEMENT,
+        default_status=409,
+    ),
     # Screenshot issues
     "E0301": ErrorSpec(
         code=Code.E0301,
@@ -269,6 +279,24 @@ ERROR_REGISTRY: Dict[str, ErrorSpec] = {
         default_message="Expression or filter refused: unsafe or too costly",
         category=Category.KEYWORD,
         default_status=400,
+    ),
+    "E0407": ErrorSpec(
+        code=Code.E0407,
+        default_message="Popup keeps coming back",
+        category=Category.KEYWORD,
+        default_status=409,
+    ),
+    "E0408": ErrorSpec(
+        code=Code.E0408,
+        default_message="Popup stopped the step",
+        category=Category.KEYWORD,
+        default_status=409,
+    ),
+    "E0409": ErrorSpec(
+        code=Code.E0409,
+        default_message="Popup dismissed, the step looks for its element again",
+        category=Category.KEYWORD,
+        default_status=409,
     ),
     # Config/File issues
     "E0501": ErrorSpec(
@@ -393,6 +421,12 @@ class ErrorPayload(BaseModel):
 
 
 _CAUSE_MAX_CHARS = 300
+
+
+def is_element_not_found(code: "str | Code") -> bool:
+    """True for the codes meaning the element was not found (E02xx, X0201), which another locator or value may fix."""
+    value = getattr(code, "value", code)
+    return value.startswith("E02") or value == Code.X0201.value
 
 
 def _first_line(error: BaseException) -> str:
