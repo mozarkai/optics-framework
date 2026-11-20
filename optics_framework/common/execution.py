@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Any, Callable
 from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.runner.keyword_register import KeywordRegistry
+from optics_framework.common.runner.keyword_register import KeywordRegistry, keyword_not_found
 from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter
 from optics_framework.common.runner.event_stream import (
     EVENT_STREAM_SUBSCRIBER_ID, EventStreamPrinter, OutputMode, prints_lines, resolve_output_mode,
@@ -15,7 +15,7 @@ from optics_framework.common.runner.event_stream import (
 from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner, KeywordRunner, heal_extra, pop_heal
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
-from optics_framework.common.error import OpticsError, Code, plain
+from optics_framework.common.error import OpticsError, Code, explain
 from optics_framework.common.utils import _is_list_type
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
@@ -82,14 +82,7 @@ class BatchExecutor(Executor):
             ))
             return runner.result_printer.test_state
         except Exception as e:
-            await event_manager.publish_event(Event(
-                entity_type="execution",
-                entity_id=session.session_id,
-                name="Execution",
-                status=EventStatus.FAIL,
-                message=f"Execution failed: {plain(e)}",
-                extra={"session_id": session.session_id}
-            ))
+            await event_manager.publish_event(_execution_event(session.session_id, EventStatus.FAIL, "Execution failed", e))
             raise
 
 
@@ -196,12 +189,11 @@ class KeywordExecutor(Executor):
                     entity_id=session.session_id,
                     name=self.keyword,
                     status=EventStatus.FAIL,
-                    message=f"Keyword execution failed: {plain(e)}",
-                    extra={"session_id": session.session_id}
+                    **_failure_fields(e, session.session_id, "Keyword execution failed"),
                 ))
                 if isinstance(e, OpticsError):
                     raise
-                raise OpticsError(Code.E0401, message=f"Keyword execution failed: {plain(e)}") from e
+                raise OpticsError(Code.E0401, message="Keyword execution failed", cause=e) from e
             extra = {"session_id": session.session_id}
             if heal_info:
                 extra.update(heal_extra(heal_info, heal_info.get("suggested_steps", [])))
@@ -222,15 +214,15 @@ class KeywordExecutor(Executor):
                 }
             return result
         else:
+            error = keyword_not_found(self.keyword, runner.keyword_map)
             await event_manager.publish_event(Event(
                 entity_type="keyword",
                 entity_id=session.session_id,
                 name=self.keyword,
                 status=EventStatus.FAIL,
-                message="Keyword not found",
-                extra={"session_id": session.session_id}
+                **_failure_fields(error, session.session_id),
             ))
-            raise OpticsError(Code.E0402, message=f"Keyword {self.keyword} not found")
+            raise error
 
 
 class RunnerFactory:
@@ -266,18 +258,22 @@ class RunnerFactory:
         return runner
 
 
+def _failure_fields(error: BaseException, session_id: str, context: str = "") -> dict[str, Any]:
+    """A failure event's message, code and hint, all taken from ``error``."""
+    explanation = explain(error)
+    return {
+        "message": f"{context}: {explanation.summary}" if context else explanation.summary,
+        "code": explanation.code,
+        "extra": {"session_id": session_id, **({"hint": explanation.hint} if explanation.hint else {})},
+    }
+
+
 def _execution_event(
-    session_id: str, status: EventStatus, message: str
+    session_id: str, status: EventStatus, message: str, error: Optional[BaseException] = None
 ) -> Event:
-    """Build a standard execution Event."""
-    return Event(
-        entity_type="execution",
-        entity_id=session_id,
-        name="Execution",
-        status=status,
-        message=message,
-        extra={"session_id": session_id},
-    )
+    """Build a standard execution Event; with ``error``, ``message`` is the context its reason follows."""
+    fields = _failure_fields(error, session_id, message) if error else {"message": message, "extra": {"session_id": session_id}}
+    return Event(entity_type="execution", entity_id=session_id, name="Execution", status=status, **fields)
 
 
 class ExecutionEngine:
@@ -341,13 +337,9 @@ class ExecutionEngine:
             return KeywordExecutor(params.keyword, params.params, event_manager=event_manager)
         except Exception as e:
             await event_manager.publish_event(
-                _execution_event(
-                    params.session_id,
-                    EventStatus.ERROR,
-                    f"Failed to create keyword executor: {plain(e)}",
-                )
+                _execution_event(params.session_id, EventStatus.ERROR, "Failed to create keyword executor", e)
             )
-            raise OpticsError(Code.E0401, message=f"Failed to create keyword executor: {plain(e)}") from e
+            raise OpticsError(Code.E0401, message="Failed to create keyword executor", cause=e) from e
 
     async def _run_executor(
         self,
@@ -362,11 +354,11 @@ class ExecutionEngine:
             return await executor.execute(session, runner)
         except Exception as e:
             await event_manager.publish_event(
-                _execution_event(params.session_id, EventStatus.ERROR, f"Execution failed: {plain(e)}")
+                _execution_event(params.session_id, EventStatus.ERROR, "Execution failed", e)
             )
             if isinstance(e, OpticsError):
                 raise
-            raise OpticsError(Code.E0701, message=f"Execution failed: {plain(e)}") from e
+            raise OpticsError(Code.E0701, message="Execution failed", cause=e) from e
 
     async def _drain_events_and_shutdown(self, event_manager: EventManager) -> None:
         """Wait for event queue to drain (with timeout), then shutdown."""
@@ -417,12 +409,12 @@ class ExecutionEngine:
                 return await self._run_executor(executor, session, runner, event_manager, params)
             except Exception as e:
                 await event_manager.publish_event(
-                    _execution_event(params.session_id, EventStatus.FAIL, f"Execution failed: {plain(e)}")
+                    _execution_event(params.session_id, EventStatus.FAIL, "Execution failed", e)
                 )
                 internal_logger.error("Execution error in session %s: %s", params.session_id, e)
                 if isinstance(e, OpticsError):
                     raise
-                raise OpticsError(Code.E0701, message=f"Execution failed: {plain(e)}") from e
+                raise OpticsError(Code.E0701, message="Execution failed", cause=e) from e
             finally:
                 if hasattr(runner, "result_printer") and runner.result_printer:
                     internal_logger.debug("Stopping result printer live display")
