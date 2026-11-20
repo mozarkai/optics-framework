@@ -178,20 +178,6 @@ def _arity(method) -> Optional[int]:
     return count
 
 
-def _catalogue_classes(package) -> List[type]:
-    """Every public class the package's modules define (not merely re-export)."""
-    import importlib
-    import pkgutil
-
-    classes = []
-    for _, module_name, _ in pkgutil.iter_modules(package.__path__):
-        module = importlib.import_module(f"{package.__name__}.{module_name}")
-        for class_name, cls in inspect.getmembers(module, inspect.isclass):
-            if cls.__module__ == module.__name__ and not class_name.startswith("_"):
-                classes.append(cls)
-    return classes
-
-
 def _class_keyword_entries(cls) -> Dict[str, Optional[int]]:
     """Every public callable a class exposes, against the number of params it takes."""
     entries: Dict[str, Optional[int]] = {}
@@ -207,10 +193,10 @@ def _class_keyword_entries(cls) -> Dict[str, Optional[int]]:
 @lru_cache(maxsize=1)
 def _keyword_catalogue() -> Dict[str, Optional[int]]:
     """Every keyword slug the runtime registers, against the number of params it takes."""
-    import optics_framework.api
+    from optics_framework.api.keywords import KEYWORD_SOURCES
 
     catalogue: Dict[str, Optional[int]] = {}
-    for cls in _catalogue_classes(optics_framework.api):
+    for cls in KEYWORD_SOURCES:
         catalogue.update(_class_keyword_entries(cls))
     catalogue.update(_FACADE_KEYWORD_SLUGS)
     return catalogue

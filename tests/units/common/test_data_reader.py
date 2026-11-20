@@ -56,6 +56,10 @@ class TestYAMLDataReader:
         assert parse_module_step("Sleep Well", {"Sleep Well"}) == ("Sleep Well", [])
         assert parse_module_step("Sleep Well") == ("Sleep", ["Well"])
 
+    @pytest.mark.parametrize("step", ["Add Note now", "With Traceback now", "To Payload now", "Log now"])
+    def test_parse_module_step_splits_only_at_a_keyword_a_session_can_run(self, step):
+        assert parse_module_step(step) == (step, [])
+
     def test_read_modules_takes_module_names_from_other_files(self, tmp_path):
         caller = _write(tmp_path, "a.yaml", "Modules:\n  - Caller:\n      - Sleep Well\n")
         defined = _write(tmp_path, "b.yaml", "Modules:\n  - Sleep Well:\n      - Sleep 1\n")

@@ -8,8 +8,6 @@ import shutil
 import tempfile
 import uuid
 import inspect
-import importlib
-import pkgutil
 import asyncio
 import warnings
 import hashlib
@@ -37,7 +35,7 @@ from optics_framework.common.runner.event_stream import OutputMode
 from optics_framework.common.runner.keyword_register import keyword_not_found
 from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64, redact_url
 from optics_framework.api import Verifier
-from optics_framework.api.keywords import build_keywords
+from optics_framework.api.keywords import KEYWORD_SOURCES, build_keywords
 from optics_framework.api.flow_control import reads_environment
 from optics_framework.helper.execute import discover_templates
 from optics_framework.helper.version import VERSION
@@ -114,7 +112,6 @@ HEALTH_STATUS_RUNNING = "Optics Framework API is running"
 LOG_LEVEL_DEBUG = "DEBUG"
 TEMPLATE_EXT_PNG = ".png"
 TEMP_DIR_PREFIX = "optics_request_"
-PKG_OPTICS_API = "optics_framework.api"
 PARAM_FILTER_CONFIG = "filter_config"
 DATA_URL_PREFIX = "data:"
 BASE64_SEPARATOR = ";base64,"
@@ -481,28 +478,9 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
         )
     return keywords
 
-def _extract_keywords_from_module(module) -> List[KeywordInfo]:
-    """Extract all keyword infos from a module."""
-    keywords = []
-    for name, obj in inspect.getmembers(module):
-        if inspect.isclass(obj) and obj.__module__ == module.__name__ and not name.startswith("_"):
-            keywords.extend(_extract_keywords_from_class(obj))
-    return keywords
-
 def discover_keywords() -> List[KeywordInfo]:
-    """
-    Discover all public methods in optics_framework.api.* classes that are likely to be used as keywords.
-    Returns a list of KeywordInfo objects.
-    """
-    api_pkg = PKG_OPTICS_API
-    keywords = []
-    api_path = __import__(api_pkg, fromlist=[""]).__path__[0]
-    for _, modname, ispkg in pkgutil.iter_modules([api_path]):
-        if ispkg or modname.startswith("__"):
-            continue
-        module = importlib.import_module(f"{api_pkg}.{modname}")
-        keywords.extend(_extract_keywords_from_module(module))
-    return keywords
+    """Every keyword a session runs, read from the classes ``build_keywords`` registers."""
+    return [info for cls in KEYWORD_SOURCES for info in _extract_keywords_from_class(cls)]
 
 @app.get("/", response_model=HealthCheckResponse, status_code=status.HTTP_200_OK)
 @app.get("/health", response_model=HealthCheckResponse, status_code=status.HTTP_200_OK)
