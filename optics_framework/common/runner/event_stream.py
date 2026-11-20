@@ -14,11 +14,16 @@ _LABELS = {
     "test_case": "test case",
     "module": "module",
     "keyword": "keyword",
+    "popup": "popup",
 }
-_DEPTH = {"execution": 0, "test_case": 0, "module": 1, "keyword": 2}
+_DEPTH = {"execution": 0, "test_case": 0, "module": 1, "keyword": 2, "popup": 3}
 _PROBLEMS = (EventStatus.FAIL, EventStatus.ERROR)
 _HEALED = "HEALED"
 _STATUS_WIDTH = max(len(_HEALED), *(len(status.value) for status in EventStatus))
+
+
+def _popup_fields(event: Event) -> dict:
+    return event.args if event.entity_type == "popup" and isinstance(event.args, dict) else {}
 
 
 class OutputMode(str, Enum):
@@ -51,7 +56,7 @@ def prints_lines(mode: OutputMode) -> bool:
 
 
 class EventStreamPrinter(EventSubscriber):
-    """Writes one line per test case, module and keyword event, flushed as it arrives.
+    """Writes one line per test case, module, keyword and acted-on popup event, flushed as it arrives.
 
     ``plain`` lines are for people reading a CI log; ``jsonl`` lines are the events
     themselves, for tools. Events reach subscribers already redacted.
@@ -67,7 +72,7 @@ class EventStreamPrinter(EventSubscriber):
         self._last_reason: str | None = None
 
     async def on_event(self, event: Event) -> None:
-        if event.entity_type not in _LABELS:
+        if event.entity_type not in _LABELS or _popup_fields(event).get("verdict") == "none":
             return
         if event.entity_type == "execution":
             if event.status not in _PROBLEMS or self._run_reported:
@@ -85,7 +90,11 @@ class EventStreamPrinter(EventSubscriber):
         indent = "  " * _DEPTH[event.entity_type]
         healed = event.status is EventStatus.PASS and event.extra.get("healed") == "true"
         status = _HEALED if healed else event.status.value
-        line = f'{clock} {status:<{_STATUS_WIDTH}} {indent}{_LABELS[event.entity_type]} "{event.name}"'
+        popup = _popup_fields(event)
+        subject = (popup.get("rule") or "no rule") if event.entity_type == "popup" else event.name
+        line = f'{clock} {status:<{_STATUS_WIDTH}} {indent}{_LABELS[event.entity_type]} "{subject}"'
+        if event.entity_type == "popup":
+            line += f" {popup.get('verdict')}"
         if event.elapsed is not None and event.status is not EventStatus.RUNNING:
             line += f" ({event.elapsed:.1f}s)"
         if healed and event.extra.get("heal_summary"):
