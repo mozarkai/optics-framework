@@ -146,22 +146,29 @@ class Verifier:
         want = utils.strip_sensitive_prefix(expected).strip()
         deadline = time.monotonic() + float(timeout)
         while True:
-            actual, result = self._read_text(element, max(deadline - time.monotonic(), self._TEXT_MIN_LOOKUP_S))
+            actual, result, miss = self._read_text(element, max(deadline - time.monotonic(), self._TEXT_MIN_LOOKUP_S))
             if actual is not None and actual.strip() == want:
                 break
             if time.monotonic() >= deadline:
-                if actual is None or result is None:
-                    raise ElementNotFound(element)
-                shown = actual.strip()
-                if sensitive:
-                    shown, want = "****", "****"
-                message = f"Element '{element}' shows '{shown}' but expected '{want}'.{self._match_count(element, result)}"
-                raise OpticsError(Code.E0401, message=mask_secrets(message))
+                raise self._text_failure(element, want, sensitive, actual, result, miss)
             time.sleep(self._TEXT_POLL_INTERVAL_S)
         if event_name:
             self.event_sdk.capture_event(event_name)
 
-    def _read_text(self, element: str, timeout: float) -> Tuple[Optional[str], Optional[LocateResult]]:
+    def _text_failure(
+        self, element: str, want: str, sensitive: bool,
+        actual: Optional[str], result: Optional[LocateResult], miss: Optional[OpticsError],
+    ) -> OpticsError:
+        if actual is None or result is None:
+            return miss or ElementNotFound(element)
+        shown, want = ("****", "****") if sensitive else (actual.strip(), want)
+        message = f"Element '{element}' shows '{shown}' but expected '{want}'.{self._match_count(element, result)}"
+        return OpticsError(Code.E0401, message=mask_secrets(message))
+
+    def _read_text(
+        self, element: str, timeout: float
+    ) -> Tuple[Optional[str], Optional[LocateResult], Optional[OpticsError]]:
+        """The element's text and where it was found, or the miss that kept it from being read."""
         try:
             # Wait through the assertion loop, which keeps to the timeout; a locate waits as long as the driver does.
             self.strategy_manager.assert_presence([element], utils.determine_element_type(element), timeout=timeout)
@@ -169,22 +176,22 @@ class Verifier:
         except OpticsError as e:
             if not is_element_not_found(e.code):
                 raise
-            return None, None
+            return None, None, e
         if result is None:
-            return None, None
+            return None, None, None
         if isinstance(result.value, tuple):
             text = getattr(result.value, "text", None)
             if text is None:
                 raise OpticsError(Code.E0401, message=f"Cannot read the text of '{element}': it was found only by OCR or image.")
-            return text, result
+            return text, result, None
         try:
-            return self.driver.get_text_element(result.value), result
+            return self.driver.get_text_element(result.value), result, None
         except Exception as e:
             if isinstance(e, OpticsError):
                 raise
             raise_if_session_dead(e)
             internal_logger.debug(f"Reading the text of '{element}' failed: {e}")
-            return None, result
+            return None, result, None
 
     def _resolve_param(self, param: str) -> str:
         """Resolve a `${variable}` reference from session elements, returning its first value."""
