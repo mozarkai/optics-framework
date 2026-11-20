@@ -15,7 +15,7 @@ from typing import Any
 from optics_framework.common import utils
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.utils import substitute_vars, var_refs, whole_var_name
-from optics_framework.common.error import Code, OpticsError, is_element_not_found
+from optics_framework.common.error import Code, ElementNotFound, OpticsError, is_element_not_found
 from optics_framework.common.logging_config import (
     is_secret_name,
     register_config_secret,
@@ -203,6 +203,18 @@ def error_parts(exc: BaseException) -> tuple[str | None, str]:
     return (str(code) if code else None), message
 
 
+def _says_why(exc: BaseException) -> bool:
+    """A miss whose chain names why it missed, such as an invalid XPath or a missing image engine."""
+    seen: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and all(current is not e for e in seen):
+        if isinstance(current, ElementNotFound) and current.specific is not None:
+            return True
+        seen.append(current)
+        current = current.__cause__
+    return False
+
+
 def as_fail(exc: BaseException, keyword: str = "", tried: Sequence[str] = ()) -> Fail:
     """``exc`` as a Fail whose text names what ``keyword`` tried."""
     if isinstance(exc, Fail):
@@ -213,7 +225,7 @@ def as_fail(exc: BaseException, keyword: str = "", tried: Sequence[str] = ()) ->
     facts = {
         # X0201: the element was found and every act on it failed, so the driver's reason is the fact.
         "not_found": f"found {where}, but the action failed: {message.split(': ', 1)[-1]}" if code == "X0201"
-        else f"not found: tried {where}.",
+        else f"{message.rstrip('.')}." if _says_why(exc) else f"not found: tried {where}.",
         "unsupported": f"{keyword} is not supported on this platform.",
         "session_lost": "the driver session ended.",
         "silent_failure": f"{keyword or 'the keyword'} reported an error: {message}.",
