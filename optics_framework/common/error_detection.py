@@ -80,6 +80,12 @@ def extract_visible_text(page_source: str) -> str:
         return " ".join(_MOBILE_TEXT_ATTRS_RE.findall(page_source))
 
 
+def describe_detected_error(error: Dict) -> str:
+    """One detected error as ``code | severity | match_string | description``, leaving out empty parts."""
+    parts = (error["error_code"], error.get("severity", ""), error.get("match_string", ""), error.get("description", ""))
+    return " | ".join(filter(None, parts))
+
+
 def detect_errors_in_text(
     searchable: str,
     error_definitions: Dict[str, Dict[str, str]],

@@ -11,7 +11,7 @@ import threading
 from optics_framework.common.logging_config import internal_logger, execution_logger, mask_secrets, mask_secret_values
 from optics_framework.common.config_handler import Config
 from optics_framework.common.error import Code
-from optics_framework.common.error_detection import ON_SCREEN_ERROR_CASE
+from optics_framework.common.error_detection import ON_SCREEN_ERROR_CASE, describe_detected_error
 from optics_framework.common.models import CaseKind, TestCaseNode
 
 
@@ -358,13 +358,7 @@ class JUnitEventHandler(EventSubscriber):
             status=EventStatus.FAIL.value,
         )
         for err in detected:
-            parts = filter(None, [
-                err["error_code"],
-                err.get("severity", ""),
-                err.get("match_string", ""),
-                err.get("description", ""),
-            ])
-            msg = " | ".join(parts)
+            msg = describe_detected_error(err)
             failure = ET.SubElement(testcase, "failure", message=msg, type="OnScreenError", code=err["error_code"])
             failure.text = msg
         session_suite.set("tests", str(int(session_suite.get("tests", "0")) + 1))

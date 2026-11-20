@@ -1,5 +1,6 @@
 """How the runners carry popups: the events they publish and the run a popup stops."""
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from optics_framework.common.models import CaseKind, KeywordNode, ModuleNode
 from optics_framework.common.models import TestCaseNode as _TestCaseNode
@@ -59,7 +60,8 @@ async def _run_all(stops_during):
         skipped.append((node.name, reason))
 
     runner.execute_test_case, runner._skip_test_case = execute, skip
-    runner._start_run = runner._capture_end_of_run_artifacts = runner._write_failed_steps_elements = lambda: None
+    runner._start_run = runner._write_failed_steps_elements = lambda: None
+    runner._capture_end_of_run_artifacts = AsyncMock()
     await runner.run_all()
     return executed, skipped
 

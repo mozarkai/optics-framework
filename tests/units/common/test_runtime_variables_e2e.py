@@ -7,6 +7,7 @@ import pytest
 
 from optics_framework.api.action_keyword import ActionKeyword
 from optics_framework.api.verifier import Verifier
+from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder
@@ -55,6 +56,10 @@ class Device:
 
     def sleep(self, duration):
         self.calls.append(("sleep", duration))
+
+    def get_page_source(self):
+        nodes = "".join(f'<node text="{text}"/>' for text in SCREEN.values())
+        return f"<hierarchy>{nodes}</hierarchy>", "20260101000000"
 
     def validate_element(self, element, timeout="10", rule="all", event_name=None):
         self.calls.append(("validate_element", element))
@@ -258,3 +263,38 @@ def test_the_pytest_runner_prints_its_steps_and_one_run_failure(run, device, cap
     out = capsys.readouterr().out
     assert 'PASS         keyword "Press Element"' in out
     assert len(re.findall(r"FAIL +run ", out)) == 1
+
+
+@pytest.fixture
+def error_screen(device, monkeypatch, tmp_path):
+    monkeypatch.setitem(SCREEN, "#toast", "Payment failed, try again")
+    monkeypatch.setattr(OpticsBuilder, "get_element_source", lambda self: InstanceFallback([device]))
+    monkeypatch.setattr(OpticsBuilder, "get_driver", lambda self: InstanceFallback([device]))
+    (tmp_path / "error_definitions.csv").write_text(
+        "error_code,match_string,description,severity\nPAY_FAIL,payment failed,Payment was declined,high\n",
+        encoding="utf-8")
+
+
+def test_a_piped_run_says_it_ended_on_an_error_screen(run, error_screen, tmp_path, capsys):
+    run({"Ok": [("Press Element", "${title_label}")]}, {"Café": ["Ok"]}, output=OutputMode.PLAIN)
+
+    lines = _progress(capsys.readouterr().out, lambda line: re.match(r"\d\d:\d\d:\d\d (PASS|FAIL) ", line))
+    assert [re.sub(r" \(\d+\.\ds\)", "", line[9:]) for line in lines] == [
+        'PASS         keyword "Press Element"',
+        'PASS       module "Ok"',
+        'PASS     test case "Café"',
+        'FAIL     test case "on-screen-error-detection": PAY_FAIL | high | payment failed | Payment was declined',
+        'FAIL     run "Execution": Some test cases failed',
+    ]
+    suite = ET.parse(tmp_path / "execution_output" / "junit_output.xml").getroot().find("testsuite")
+    assert [case.get("name") for case in suite.iter("testcase")] == ["Café", "on-screen-error-detection"]
+    assert (suite.get("tests"), suite.get("failures")) == ("2", "1")
+
+
+def test_a_jsonl_run_reports_the_error_screen_as_a_failed_test_case(run, error_screen, capsys):
+    run({"Ok": [("Press Element", "${title_label}")]}, {"Café": ["Ok"]}, output=OutputMode.JSONL)
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    detection = [e for e in events if e["name"] == "on-screen-error-detection"]
+    assert [(e["entity_type"], e["status"], e["message"]) for e in detection] == [
+        ("test_case", "FAIL", "PAY_FAIL | high | payment failed | Payment was declined")]
