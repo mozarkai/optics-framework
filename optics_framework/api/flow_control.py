@@ -458,9 +458,11 @@ class FlowControl:
             # If not inverted, success means we should execute target
             try:
                 return self.execute_module(target)
+            except StepFailed:
+                raise
             except Exception as e:
                 execution_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
-                raise e if isinstance(e, StepFailed) else StepFailed((target,), e) from e
+                raise StepFailed((target,), e) from e
         except Exception as e:
             # Module execution failed
             internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' raised error: {e}.")
@@ -469,9 +471,11 @@ class FlowControl:
                 internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' failed, but condition is inverted. Executing target '{target}'.")
                 try:
                     return self.execute_module(target)
+                except StepFailed:
+                    raise
                 except Exception as target_e:
                     internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {target_e}.")
-                    raise target_e if isinstance(target_e, StepFailed) else StepFailed((target,), target_e) from target_e
+                    raise StepFailed((target,), target_e) from target_e
             # If not inverted, failure means we should NOT execute target
             return None
 
