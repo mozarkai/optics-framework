@@ -651,7 +651,7 @@ class ActionKeyword:
             hint="Make sure that no other element covers it and that it is enabled.",
         )
 
-    def start_popup_run(self) -> None:
+    def _start_popup_run(self) -> None:
         """A served or live request is one run, so its popup limits and events start empty."""
         self._own_popup_run = PopupRun()
 

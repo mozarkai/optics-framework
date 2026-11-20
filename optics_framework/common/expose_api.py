@@ -945,7 +945,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
         ).model_dump())
 
         keywords = build_keywords(session)
-        keywords.action_keyword.start_popup_run()
+        keywords.action_keyword._start_popup_run()
 
         keyword_slug = "_".join(request.keyword.split()).lower()
         method = keywords.keyword_map.get(keyword_slug)
