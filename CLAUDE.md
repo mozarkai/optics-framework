@@ -287,7 +287,7 @@ When a change breaks a test, either the test found a regression (fix the code) o
 - **`KeywordRegistry.register` is greedy.** Every public callable becomes a keyword and may collide across API classes (only a warning at `keyword_register.py:53`). Prefix helpers with `_`.
 - **`act` must handle both locate shapes** (`(x, y)` tuple or element handle). Any exception in `act` counts as that strategy failing, so a bug in `act` looks like element-not-found.
 - **`optics.py:Optics` ≠ the runner's keyword set.** The runner, HTTP API and `optics list` reflect the API classes; the SDK uses explicit `Optics` methods. They can drift.
-- **Async re-entrancy.** `ExecutionEngine.execute` must run inside `asyncio.run(...)` via `BaseRunner.run`. `PytestRunner` (`test_runnner.py:1215`) uses `queue_event_sync` (`:143`), which runs each subscriber in its own `asyncio.run`, on a worker thread when `pytest.main` runs inside the batch's loop; don't mix the two paths.
+- **Async re-entrancy.** `ExecutionEngine.execute` must run inside `asyncio.run(...)` via `BaseRunner.run`. `PytestRunner` (`test_runnner.py:1222`) uses `queue_event_sync` (`:143`), which runs each subscriber in its own `asyncio.run`, on a worker thread when `pytest.main` runs inside the batch's loop; don't mix the two paths.
 - **`Session` mutates the passed-in `Config`** (`json_path`, `execution_output_path`); don't share a `Config` across sessions.
 - **Truncated JUnit XML on long runs** → raise `OPTICS_EVENT_DRAIN_TIMEOUT_S` (default `2.0`) before debugging logic.
 - **Robot Framework is optional.** Don't hard-import `robot.api`; mirror the try/except in `optics.py`.
