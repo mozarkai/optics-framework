@@ -19,7 +19,8 @@ from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.caller_policy import refuse_server_read
 from optics_framework.common.error import OpticsError, Code, plain
-from optics_framework.common import expression, test_context, utils
+from optics_framework.common import expression, fallback, utils
+from optics_framework.common.runner.data_reader import bind_params, step_arguments, step_candidates
 
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
@@ -144,10 +145,13 @@ class FlowControl:
         keyword_map: dict[str, Callable[..., Any]]
     ) -> None:
         self.session = session
-        # modules is a ModuleData instance
-        self.modules = self.session.modules
         self.keyword_map = keyword_map
         self.config_handler: ConfigHandler = self.session.config_handler
+
+    @property
+    def modules(self) -> Any:
+        """The session's modules as they are now, so a replacement reaches a FlowControl already built."""
+        return self.session.modules
 
     def _ensure_session(self) -> None:
         """Ensures a Session instance is set."""
@@ -191,18 +195,17 @@ class FlowControl:
     def _execute_keyword_method(
         self, method: Callable[..., Any], keyword: str, params: List[Any]
     ) -> Any:
-        """Resolve params, log, and call the keyword method; raise on error."""
+        """Call the keyword on each value of its ``${name}`` params in turn, through the runner's fallback ladder."""
         elements = self._get_or_create_session_elements()
         params, store_as = utils.split_store_as(params)
-        test_context.name_locators(params, elements.get_element)
-        params = utils.substitute_inline(method, params, elements)
-        raw_indices = utils.raw_param_indices(method)
-        resolved_params = utils.unescape_vars(method, [
-            p if i in raw_indices else self._resolve_param(p)
-            for i, p in enumerate(params)
-        ])
-        execution_logger.info(f"Executing {keyword} with params: {resolved_params}")
-        return utils.call_and_store(elements, method, resolved_params, {}, store_as)[0]
+
+        def attempt(combo: tuple[Any, ...]) -> Any:
+            positional, named = step_arguments(method, combo, elements)
+            bind_params(keyword, method, positional, named)
+            execution_logger.info(f"Executing {keyword} with params: {positional} {named or ''}".rstrip())
+            return utils.call_and_store(elements, method, positional, named, store_as)[0]
+
+        return fallback.run(step_candidates(method, params, elements), attempt, f"keyword '{keyword}'")
 
     def _execute_single_keyword(
         self, module_name: str, keyword: str, params: List[Any]
