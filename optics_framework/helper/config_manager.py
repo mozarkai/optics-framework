@@ -1,4 +1,6 @@
 import os
+import sys
+from typing import Any, NamedTuple
 
 import yaml
 from pydantic import TypeAdapter
@@ -9,7 +11,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, Label, ListView, ListItem, Static
 
 from optics_framework.common import safe_fs
-from optics_framework.common.config_handler import Config, ConfigHandler, DependencyConfig, load_project_yaml
+from optics_framework.common.config_handler import Config, ConfigHandler, DependencyConfig, config_from, load_project_yaml
+from optics_framework.common.error import OpticsError
 
 _CONFIG_LIST_ID = "#config-list"
 
@@ -19,20 +22,45 @@ def _project_config_path(folder: str) -> str:
     return os.path.join(folder, "config.yaml")
 
 
-def _load_project_config(folder: str) -> Config:
-    """Read ``<folder>/config.yaml`` into a :class:`Config`.
+class ProjectConfig(NamedTuple):
+    config: Config
+    refused: dict[str, Any]
+    warning: str | None
 
-    A missing file yields the built-in defaults (every source present but
-    disabled); a malformed file logs and also falls back to defaults so the
-    editor stays usable instead of crashing on a broken project."""
+
+def _load_project_config(folder: str) -> ProjectConfig:
+    """Read ``<folder>/config.yaml`` for editing.
+
+    A missing or malformed file yields the built-in defaults (every source
+    present but disabled). A field ``Config`` refuses is kept as written in
+    ``refused`` and named in ``warning``, so the editor still opens on the
+    file the user came to fix."""
     path = _project_config_path(folder)
     if not os.path.exists(path):
-        return Config()
+        return ProjectConfig(Config(), {}, None)
     try:
         data = load_project_yaml(path) or {}
     except (yaml.YAMLError, OSError):
-        return Config()
-    return Config(**data)
+        return ProjectConfig(Config(), {}, None)
+    try:
+        return ProjectConfig(config_from(data), {}, None)
+    except OpticsError as error:
+        refused = {key: value for key, value in data.items() if not _accepted(key, value)}
+        kept = {key: value for key, value in data.items() if key not in refused}
+        return ProjectConfig(Config(**kept), refused, f"{error.code.value} in {path}: {error.message}")
+
+
+def _accepted(key: str, value: Any) -> bool:
+    try:
+        config_from({key: value})
+    except OpticsError:
+        return False
+    return True
+
+
+def _warn(warning: str | None) -> None:
+    if warning:
+        print(f"Warning: {warning}", file=sys.stderr)
 
 
 class QuitConfirmScreen(ModalScreen[bool]):
@@ -154,7 +182,7 @@ class ProjectConfigTUI(App):
         super().__init__()
         self.folder = folder
         self.config_path = _project_config_path(folder)
-        self.config = _load_project_config(folder)
+        self.config, self.refused, self.warning = _load_project_config(folder)
         self.options = list(self.config.model_fields.keys())
         self._editing_key: str | None = None
 
@@ -175,6 +203,8 @@ class ProjectConfigTUI(App):
 
     def on_mount(self) -> None:
         self.query_one(_CONFIG_LIST_ID).focus()
+        if self.warning:
+            self.notify(self.warning, severity="warning", timeout=15)
 
     def get_value(self, key: str) -> str:
         """Fetch and format the current config value.
@@ -182,6 +212,8 @@ class ProjectConfigTUI(App):
         Dependency-list keys show their enabled source names (e.g.
         ``['appium']``) instead of the full nested structure — the part a
         user is actually tuning."""
+        if key in self.refused:
+            return f"{self.refused[key]} (not valid)"
         value = getattr(self.config, key)
         if key in ConfigHandler.DEPENDENCY_KEYS and isinstance(value, list):
             enabled = [
@@ -208,7 +240,7 @@ class ProjectConfigTUI(App):
         current_value = getattr(self.config, key)
 
         if isinstance(current_value, bool):
-            setattr(self.config, key, not current_value)
+            self._set(key, not current_value)
             self.refresh_list()
         else:
             self._editing_key = key
@@ -241,11 +273,9 @@ class ProjectConfigTUI(App):
                 # Each entry must be keyed by the actual source name (e.g. "appium"),
                 # not the literal "name" — otherwise every source collapses to one
                 # unresolvable key.
-                setattr(self.config, key,
-                        [{source: DependencyConfig(enabled=True)} for source in parsed])
+                self._set(key, [{source: DependencyConfig(enabled=True)} for source in parsed])
             else:
-                parsed = TypeAdapter(Config.model_fields[key].annotation).validate_python(new_value)
-                setattr(self.config, key, parsed)
+                self._set(key, TypeAdapter(Config.model_fields[key].annotation).validate_python(new_value))
             self.refresh_list()
         except Exception as e:
             self.push_screen(ErrorScreen(
@@ -253,6 +283,10 @@ class ProjectConfigTUI(App):
         finally:
             self.query_one(".editing").remove()
             self._editing_key = None
+
+    def _set(self, key: str, value: Any) -> None:
+        setattr(self.config, key, value)
+        self.refused.pop(key, None)
 
     def action_save(self) -> None:
         try:
@@ -267,7 +301,7 @@ class ProjectConfigTUI(App):
         # the user wrote. This is acceptable for the --edit power-user path; the
         # beginner path (`optics configure`) writes a freshly rendered config.
         safe_fs.write_text(
-            self.config_path, yaml.safe_dump(self.config.model_dump(), default_flow_style=False)
+            self.config_path, yaml.safe_dump(self.config.model_dump() | self.refused, default_flow_style=False)
         )
 
     async def action_quit(self) -> None:
@@ -293,7 +327,9 @@ def configure(folder: str | None = None, edit: bool = False) -> None:
     target = folder if folder is not None else os.getcwd()
 
     if edit:
-        ProjectConfigTUI(target).run()
+        editor = ProjectConfigTUI(target)
+        _warn(editor.warning)
+        editor.run()
         return
 
     from optics_framework.helper.onboarding import print_next_steps
@@ -304,11 +340,11 @@ def configure(folder: str | None = None, edit: bool = False) -> None:
     )
 
     config_path = _project_config_path(target)
-    if os.path.exists(config_path) and not Confirm.ask(
-        f"{config_path} already exists. Overwrite it?", default=False
-    ):
-        print("Aborted; existing config left unchanged.")
-        return
+    if os.path.exists(config_path):
+        _warn(_load_project_config(target).warning)
+        if not Confirm.ask(f"{config_path} already exists. Overwrite it?", default=False):
+            print("Aborted; existing config left unchanged.")
+            return
 
     answers = prompt_project_config()
     text = render_project_config(answers)
