@@ -2,8 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from optics_framework.api.flow_control import raw_params
 from optics_framework.common import test_context
 from optics_framework.common.agent_core import Focus
+from optics_framework.common.error import Code
 from optics_framework.common.models import ElementData
 from optics_framework.helper import live_tui
 from optics_framework.helper.live import ActionStatus, LiveController
@@ -32,6 +34,7 @@ def _controller(keyword_map):
     ctrl.saved = True
     ctrl._focus = Focus()
     ctrl._elements_loaded = True
+    ctrl.session = SimpleNamespace(elements=ElementData())
     return ctrl
 
 
@@ -52,6 +55,26 @@ def test_an_agent_call_keeps_the_suite_name_when_other_params_follow():
     ctrl._agent_call("press_element", {"element": "${login_button}", "timeout": "5"})
 
     assert seen == ["login_button"]
+
+
+def test_a_live_keyword_gets_its_raw_params_unresolved():
+    seen = []
+
+    @raw_params(0, 1)
+    def evaluate(expression, target=None):
+        seen.append((expression, target))
+
+    ctrl = _controller({"evaluate": evaluate})
+
+    assert ctrl.run_keyword("evaluate ${total} target=${result}").status is ActionStatus.PASS
+    assert seen == [("${total}", "${result}")]
+
+
+def test_an_undefined_live_element_fails_as_e0901():
+    result = _controller({"press_element": lambda element: None}).run_keyword("press_element ${missing}")
+
+    assert result.status is ActionStatus.FAIL
+    assert result.error.code is Code.E0901
 
 
 def test_type_error_surfaces_as_friendly_signature_hint():
