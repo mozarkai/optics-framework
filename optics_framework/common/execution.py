@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Any, Callable
 from pydantic import BaseModel, Field, ConfigDict
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.runner.keyword_register import KeywordRegistry, keyword_not_found
+from optics_framework.common.runner.keyword_register import keyword_not_found
 from optics_framework.common.runner.printers import TreeResultPrinter, TerminalWidthProvider, NullResultPrinter
 from optics_framework.common.runner.event_stream import (
     EVENT_STREAM_SUBSCRIBER_ID, EventStreamPrinter, OutputMode, prints_lines, resolve_output_mode,
@@ -17,7 +17,7 @@ from optics_framework.common.logging_config import LoggerContext, internal_logge
 from optics_framework.common.models import TestCaseNode
 from optics_framework.common.error import OpticsError, Code, explain
 from optics_framework.common.utils import _is_list_type
-from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
+from optics_framework.api.keywords import build_keywords
 from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
@@ -235,24 +235,20 @@ class RunnerFactory:
         event_manager: EventManager
     ) -> Runner:
 
-        registry = KeywordRegistry()
-        if session.driver is not None:
-            for api_class in (ActionKeyword, AppManagement, Verifier):
-                registry.register(session.optics.build(api_class))
-        registry.register(FlowControl(session=session, keyword_map=registry.keyword_map))
+        keyword_map = build_keywords(session, device=session.driver is not None).keyword_map
 
         if runner_type == "test_runner":
             result_printer = TreeResultPrinter.get_instance(
                 TerminalWidthProvider()) if use_printer else NullResultPrinter()
             runner = TestRunner(
-                session, registry.keyword_map, result_printer, event_manager=event_manager
+                session, keyword_map, result_printer, event_manager=event_manager
             )
         elif runner_type == "pytest":
             runner = PytestRunner(
-                session, registry.keyword_map, event_manager=event_manager
+                session, keyword_map, event_manager=event_manager
             )
         elif runner_type == "keyword_runner":
-            runner = KeywordRunner(registry.keyword_map)
+            runner = KeywordRunner(keyword_map)
         else:
             raise OpticsError(Code.E0601, message=f"Unknown runner type: {runner_type}")
         return runner

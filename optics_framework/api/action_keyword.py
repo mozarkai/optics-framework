@@ -264,6 +264,7 @@ class ActionKeyword:
         session_config = builder.session_config
         self.capture_output_dir = session_config.capture_dir
         self._own_popup_run = PopupRun()
+        self._module_runner: Optional[Callable[[str], Any]] = None
         self._popup_source_driver: Any = None
         self._popup = PopupGuard(lambda: session_config.popup_rules, self._popup_io(), self._popup_run)
         # AI self-heal (last-resort fallback). Inert unless explicitly toggled on AND an
@@ -645,6 +646,7 @@ class ActionKeyword:
             tap_at=lambda x, y: self._popup_driver_call("press_coordinates", x, y),
             back=lambda: self._popup_driver_call("go_back"),
             alert=lambda button: self._popup_driver_call("answer_alert", button),
+            run_module=self._popup_run_module,
             read_alert=self.driver.read_alert,
             screenshot=self._fresh_screenshot,
             save_image=lambda image, name: utils.save_capture_image(image, name, self.capture_output_dir),
@@ -669,6 +671,11 @@ class ActionKeyword:
     def _fresh_screenshot(self) -> Any:
         with changing_screen():
             return self._capture_screenshot_safe()
+
+    def _popup_run_module(self, name: str) -> None:
+        if self._module_runner is None:
+            raise OpticsError(Code.E0601, message=f"Module '{name}' cannot run: these keywords were not built with build_keywords.")
+        self._module_runner(name)
 
     def _popup_tap(self, target: str) -> bool:
         """Tap ``target`` through the locate ladder and the driver. Not through press_element, which would ask the guard again."""
