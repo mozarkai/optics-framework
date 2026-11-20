@@ -12,13 +12,13 @@ import asyncio
 import warnings
 import hashlib
 from contextlib import asynccontextmanager
-from typing import Annotated, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
+from typing import Annotated, Literal, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.models import ApiData, ElementData
+from optics_framework.common.models import ApiData, ElementData, parse_popup_rules
 from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
@@ -142,6 +142,18 @@ class ExecuteRequest(BaseModel):
     keyword: Optional[str] = None
     params: Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]] = []
     template_images: Optional[Dict[str, str]] = None
+
+
+class PopupRulesUpdate(BaseModel):
+    """Request model for replacing a running session's popup rules."""
+
+    popup_rules: List[Dict[str, Any]] = []
+
+
+class AppiumSettingsUpdate(BaseModel):
+    """Request model for changing Appium settings of a running session."""
+
+    settings: Dict[str, Any]
 
 
 class TemplateUploadRequest(BaseModel):
@@ -354,6 +366,8 @@ class SessionConfig(BaseModel):
     appium_url: Optional[str] = None
     appium_config: Optional[Dict[str, Any]] = None
     strict_element_match: Optional[bool] = None
+    popup_rules: List[Dict[str, Any]] = []
+    permissions: Dict[str, Literal["allow", "deny"]] = {}  # Android only, applied as the session starts
     api_data: Optional[Dict[str, Any]] = None  # Inline API definitions only; file path not supported in REST
 
     def _normalize_item(self, item: Union[str, Dict[str, Any]], top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
@@ -588,6 +602,8 @@ async def create_session(config: SessionConfig):
             log_level=LOG_LEVEL_DEBUG,
             save_captures=False,  # do not save screenshots or pagesource when using `optics serve`
             strict_element_match=bool(config.strict_element_match),
+            popup_rules=parse_popup_rules(config.popup_rules, "popup_rules"),
+            permissions=config.permissions,
         )
         templates = (
             discover_templates(config.project_path) if config.project_path else None
@@ -914,6 +930,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
 
         registry = KeywordRegistry()
         action_keyword = session.optics.build(ActionKeyword)
+        action_keyword.start_popup_run()
         app_management = session.optics.build(AppManagement)
         verifier = session.optics.build(Verifier)
         registry.register(action_keyword)
@@ -986,6 +1003,55 @@ async def upload_template(session_id: str, body: TemplateUploadRequest):
     await asyncio.to_thread(_write_bytes_to_path, path, raw)
     session.inline_templates[body.name] = path
     return {"name": body.name, "status": STATUS_OK}
+
+
+@app.put(
+    "/v1/sessions/{session_id}/popup_rules",
+    responses={
+        400: {"description": "A rule list that cannot be read (E0501)"},
+        404: {"description": "Session not found"},
+    },
+)
+async def replace_popup_rules(session_id: str, body: PopupRulesUpdate):
+    """
+    Replace the session's popup rules. The popup guard reads them on every check,
+    so the next step already uses the new list. An empty list turns popup handling off.
+    """
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
+    try:
+        session.config.popup_rules = parse_popup_rules(body.popup_rules, "popup_rules")
+    except OpticsError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
+    return {"popup_rules": len(session.config.popup_rules)}
+
+
+@app.put(
+    "/v1/sessions/{session_id}/appium_settings",
+    responses={
+        400: {"description": "The session's driver cannot change Appium settings"},
+        404: {"description": "Session not found"},
+        500: {"description": "The device refused the settings"},
+    },
+)
+async def update_appium_settings(session_id: str, body: AppiumSettingsUpdate):
+    """
+    Change Appium settings of the running session, for example the iOS
+    ``autoClickAlertSelector`` that answers system alerts as they appear.
+    """
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
+    driver = session.driver.active_instance if session.driver else None
+    update = getattr(driver, "update_appium_settings", None)
+    if update is None:
+        raise HTTPException(status_code=400, detail="The session's driver cannot change Appium settings.")
+    try:
+        await asyncio.to_thread(update, body.settings)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not change the Appium settings: {e}") from e
+    return {"settings": sorted(body.settings)}
 
 
 @app.post(
