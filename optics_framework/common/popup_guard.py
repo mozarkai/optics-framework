@@ -32,6 +32,7 @@ class Verdict(str, Enum):
 
 
 COUNTED = (Verdict.HANDLED, Verdict.LIMIT, Verdict.STOP)
+STOPS = (Code.E0206, Code.E0407, Code.E0408)
 
 
 @dataclass

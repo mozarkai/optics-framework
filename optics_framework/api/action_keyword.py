@@ -14,8 +14,8 @@ from optics_framework.common.agent_core import bind, runner_params, visible_para
 from optics_framework.common.ai_self_heal import (
     VALUE_PLACEHOLDER, AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
 )
-from optics_framework.common.error import Code, ElementNotFound, OpticsError, element_label
-from optics_framework.common.popup_guard import PopupGuard, PopupIO, PopupRun, Verdict
+from optics_framework.common.error import Code, ElementNotFound, OpticsError, element_label, is_element_not_found
+from optics_framework.common.popup_guard import STOPS as _POPUP_STOPS, PopupGuard, PopupIO, PopupRun, Verdict
 from optics_framework.common.popup_screen import PopupScreen
 from optics_framework.common.screen_snapshot import read_screen
 from .verifier import Verifier
@@ -98,9 +98,6 @@ def _save_annotated_for_result(
         output_dir=execution_dir,
         time_stamp=utils.get_timestamp(),
     )
-
-
-_POPUP_STOPS = (Code.E0206, Code.E0407, Code.E0408)
 
 
 def _is_covered(located: Any, allow_covered: bool) -> bool:
@@ -507,11 +504,8 @@ class ActionKeyword:
         aoi_height = _parse_aoi_param(aoi[3], 100)
         is_aoi_used = not (aoi_x == 0 and aoi_y == 0 and aoi_width == 100 and aoi_height == 100)
         lookup_index = int(index)
-        if self._popup.active:
-            self._popup.begin_step(func_name, element)
-        while True:
-            if self._popup.active:
-                self._raise_popup_stop(self._popup.before_step())
+
+        def attempt() -> Any:
             with one_capture_per_source():
                 screenshot_np = self._capture_screenshot_safe()
                 if is_aoi_used and screenshot_np is not None and self.capture_output_dir is not None:
@@ -524,13 +518,38 @@ class ActionKeyword:
                     self.strategy_manager, element,
                     aoi_x, aoi_y, aoi_width, aoi_height, lookup_index, is_aoi_used,
                 )
-                try:
-                    return self._act_until_success(
-                        results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered, value=value
-                    )
-                except OpticsError as e:
-                    if e.code != Code.E0409:
-                        raise
+                return self._act_until_success(
+                    results, act, element, func_name, intent_args, screenshot_np, allow_covered=allow_covered, value=value
+                )
+
+        return self._popup_step(func_name, element, attempt)
+
+    def _popup_step(self, func_name: str, element: Any, attempt: Callable[[], Any]) -> Any:
+        """``attempt`` as one step under the popup guard: the before-every-step rules run before each pass, and a pass
+        that ends in E0409 (popup dismissed) makes the step try again."""
+        if self._popup.active:
+            self._popup.begin_step(func_name, element)
+        while True:
+            if self._popup.active:
+                self._raise_popup_stop(self._popup.before_step())
+            try:
+                return attempt()
+            except OpticsError as e:
+                if e.code != Code.E0409:
+                    raise
+
+    def _assert_step(self, func_name: str, element: Any, look: Callable[[], Any]) -> Any:
+        """An assertion's ``look`` as one popup-guarded step. A look changes nothing, so a miss asks about a popup and
+        looks again, with its full timeout, once a rule has dismissed one."""
+        def attempt() -> Any:
+            try:
+                return look()
+            except OpticsError as e:
+                if is_element_not_found(e.code):
+                    self._popup_before_self_heal()
+                raise
+
+        return self._popup_step(func_name, element, attempt)
 
     def _act_on(
         self, result: Any, act: Callable[[Any], Any], element: Any, func_name: str, allow_covered: bool
