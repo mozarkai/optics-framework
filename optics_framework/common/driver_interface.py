@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any, NoReturn, Optional
 
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.popup_screen import BlankScreen, PopupScreen
 
 
 @functools.cache
@@ -317,6 +318,12 @@ class DriverInterface(ABC):
         """Show the pointer at ``point``, as fractions of the screen's width and height, without pressing; ``None`` moves it off the screen."""
         self._unsupported("point_at")
 
+    def read_alert(self) -> Optional[tuple[str, list[str]]]:
+        self._unsupported("read_alert")
+
+    def answer_alert(self, button: str) -> None:
+        self._unsupported("answer_alert")
+
     def select_option(self, element: Any, option: str, event_name: Optional[str] = None) -> bool:
         """Choose ``option`` in a native list control; False when ``element`` is not one, so it is opened like a dropdown."""
         return False
@@ -333,3 +340,7 @@ class DriverInterface(ABC):
 
     def attach_screen(self, read: Optional[Callable[[], list[dict]]]) -> None:
         """Hands the driver a reader of the session's screen rows, or None when nothing reads the screen."""
+
+    def popup_screen(self, source: Optional[str]) -> PopupScreen:
+        """The popup guard's view of ``source``, this driver's page source or None when it could not be read. A driver that can read popups overrides this."""
+        return BlankScreen()

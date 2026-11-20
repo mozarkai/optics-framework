@@ -33,12 +33,14 @@ from selenium.webdriver.common.actions import interaction  # type: ignore
 from selenium.webdriver.common.actions.wheel_input import ScrollOrigin  # type: ignore
 from selenium.webdriver.common.keys import Keys  # type: ignore
 from optics_framework.common.driver_interface import DriverInterface
+from optics_framework.common.popup_screen import PopupScreen
 from optics_framework.common.logging_config import internal_logger, redact_secret_values
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from optics_framework.engines.drivers import appium_fields
+from optics_framework.engines.drivers.appium_popup import AppiumScreen
 from optics_framework.engines.drivers.appium_tv import TvWebApp
 from optics_framework.engines.drivers.appium_platforms import (
     PlatformProfile,
@@ -52,6 +54,7 @@ from optics_framework.engines.drivers.appium_platforms import (
     supported_platforms,
     supported_on,
     ANDROID,
+    IOS,
     DESKTOP,
     MOBILE,
     POINTER,
@@ -100,6 +103,39 @@ _PROBE_JS = (
 )
 _PROBE_REMOVE_JS = "document.getElementById(arguments[0])?.remove();"
 _GET_CONTEXTS = "mobile: getContexts"
+# What each permission name in the session config stands for on Android; a full "android.permission.X" is taken as it is.
+# The strings are listed at https://developer.android.com/reference/android/Manifest.permission
+_ANDROID_PERMISSIONS = {
+    "camera": ("android.permission.CAMERA",),
+    "location": ("android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"),
+    "notifications": ("android.permission.POST_NOTIFICATIONS",),
+    "microphone": ("android.permission.RECORD_AUDIO",),
+    "background_location": ("android.permission.ACCESS_BACKGROUND_LOCATION",),
+    "contacts": ("android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS"),
+    "calendar": ("android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"),
+    "phone": ("android.permission.READ_PHONE_STATE", "android.permission.CALL_PHONE"),
+    "call_log": ("android.permission.READ_CALL_LOG", "android.permission.WRITE_CALL_LOG"),
+    "sms": ("android.permission.SEND_SMS", "android.permission.READ_SMS", "android.permission.RECEIVE_SMS"),
+    "storage": ("android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE"),
+    "photos": ("android.permission.READ_MEDIA_IMAGES",),
+    "videos": ("android.permission.READ_MEDIA_VIDEO",),
+    "audio": ("android.permission.READ_MEDIA_AUDIO",),
+    "bluetooth": ("android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_SCAN",
+                  "android.permission.BLUETOOTH_ADVERTISE"),
+    "nearby_wifi": ("android.permission.NEARBY_WIFI_DEVICES",),
+    "body_sensors": ("android.permission.BODY_SENSORS",),
+    "activity_recognition": ("android.permission.ACTIVITY_RECOGNITION",),
+}
+def _android_permissions(name: str) -> tuple[str, ...]:
+    if name.startswith("android.permission."):
+        return (name,)
+    try:
+        return _ANDROID_PERMISSIONS[name.lower()]
+    except KeyError:
+        raise OpticsError(
+            Code.E0501,
+            message=f"Unknown permission '{name}'. Use one of {', '.join(_ANDROID_PERMISSIONS)} or a full android.permission.* name.",
+        ) from None
 _SAFARI_VIEW_SERVICE = "com.apple.SafariViewService"
 _ONE_PAGE_ON_SCREEN = frozenset({_SAFARI_VIEW_SERVICE, "com.apple.mobilesafari"})
 # A zero-size page reports visible too: Firefox runs its translations engine in one.
@@ -548,9 +584,11 @@ class Appium(DriverInterface):
         self._cleanup_existing_driver()
         all_caps = self.capabilities.copy() if self.capabilities else {}
         self._apply_app_identifier_caps(all_caps, app_package, app_activity)
+        self._check_permission_names(all_caps)
 
         attached_sid = self._try_attach_or_clear_session_caps(all_caps, event_name=event_name)
         if attached_sid is not None:
+            self.apply_permissions()
             return attached_sid
 
         options, default_options = self._get_platform_and_options(all_caps)
@@ -559,8 +597,91 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Final capabilities being applied: {redact_secret_values(final_caps)}")
         for key, value in final_caps.items():
             options.set_capability(key, value)
+        held = self._hold_launch_for_permissions(options, final_caps)
 
-        return self._create_new_driver_session(options, event_name=event_name)
+        session_id = self._create_new_driver_session(options, event_name=event_name)
+        self.apply_permissions()
+        if held:
+            self._start_held_app(*held)
+        return session_id
+
+    def _configured_permissions(self) -> dict:
+        config = getattr(getattr(self.event_sdk, "config_handler", None), "config", None)
+        permissions = getattr(config, "permissions", None)
+        return permissions if isinstance(permissions, dict) else {}
+
+    def _is_android(self, caps: dict[str, Any]) -> bool:
+        return normalize_platform(caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)) == ANDROID
+
+    def _check_permission_names(self, caps: dict[str, Any]) -> None:
+        """An unknown permission name is refused before any session exists, so a failed start leaves no driver open."""
+        if self._is_android(caps):
+            for name in self._configured_permissions():
+                _android_permissions(name)
+
+    def _hold_launch_for_permissions(self, options: Any, caps: dict[str, Any]) -> Optional[tuple[str, Optional[str]]]:
+        """On Android, keep the session from opening the app until its permissions are set, so no prompt can come
+        first. Returns the package and activity to start afterwards, or None when nothing is held: a caller that
+        turned ``autoLaunch`` off launches the app itself, and ``autoWebview`` needs the app open as the session starts."""
+        package = caps.get(self.CAP_APP_PACKAGE_LEGACY) or caps.get(self.CAP_APP_PACKAGE)
+        auto_launch = caps.get("autoLaunch", caps.get("appium:autoLaunch", True))
+        if not self._configured_permissions() or not self._is_android(caps) or not package or not auto_launch or _starts_in_web(caps):
+            return None
+        options.set_capability("appium:autoLaunch", False)
+        return package, caps.get("appActivity") or caps.get("appium:appActivity")
+
+    def _start_held_app(self, package: str, activity: Optional[str]) -> None:
+        driver = self._require_driver()
+        if activity:
+            driver.execute_script("mobile: startActivity", {"intent": f"{package}/{activity}"})
+        else:
+            driver.activate_app(package)
+
+    def apply_permissions(self) -> None:
+        """Grant or revoke each configured permission for the app under test on Android; on iOS it only warns."""
+        permissions = self._configured_permissions()
+        if not permissions:
+            return
+        if self._active_platform() != ANDROID:
+            internal_logger.warning(
+                "'permissions' sets Android permissions only. On iOS answer system prompts with the "
+                "appium:settings[autoClickAlertSelector] capability."
+            )
+            return
+        caps = self._session_capabilities()
+        package = caps.get(self.CAP_APP_PACKAGE_LEGACY) or caps.get(self.CAP_APP_PACKAGE)
+        if not package:
+            internal_logger.warning("'permissions' is set but the capabilities have no appPackage, so none were applied.")
+            return
+        driver = self._require_driver()
+        for name, decision in permissions.items():
+            action = "grant" if decision == "allow" else "revoke"
+            for permission in _android_permissions(name):
+                try:
+                    driver.execute_script(
+                        "mobile: changePermissions", {"action": action, "appPackage": package, "permissions": [permission]}
+                    )
+                except Exception as e:  # noqa: BLE001 - one permission the app lacks must not stop the others
+                    internal_logger.warning(f"Could not {action} {permission} for {package}: {e}")
+
+    def popup_screen(self, source: Optional[str]) -> PopupScreen:
+        return AppiumScreen(source)
+
+    @supported_on(IOS)
+    def read_alert(self) -> Optional[tuple[str, list[str]]]:
+        """The text and button labels of the system alert on screen, or None. The page source leaves such alerts out."""
+        driver = self._require_driver()
+        try:
+            buttons = driver.execute_script("mobile: alert", {"action": "getButtons"})
+            return driver.switch_to.alert.text, [str(b) for b in buttons or []]
+        except Exception as e:  # noqa: BLE001 - no alert open is an error to the driver and the common case
+            internal_logger.debug(f"No system alert on screen: {e}")
+            return None
+
+    @supported_on(IOS)
+    def answer_alert(self, button: str) -> None:
+        """Press ``button`` (by its label) on the system alert on screen, such as a permission prompt."""
+        self._require_driver().execute_script("mobile: alert", {"action": "accept", "buttonLabel": button})
 
     def get_session_id(self) -> Optional[str]:
         """Return the current Appium session id, if a session is active."""
@@ -572,6 +693,10 @@ class Appium(DriverInterface):
     def get_driver_session_id(self) -> Optional[str]:
         """DriverInterface-compliant getter for Appium session id."""
         return self.get_session_id()
+
+    def update_appium_settings(self, settings: Dict[str, Any]) -> None:
+        """Change Appium settings of the running session, such as ``autoClickAlertSelector`` on iOS."""
+        self._require_driver().update_settings(settings)
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
