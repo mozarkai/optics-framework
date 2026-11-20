@@ -102,7 +102,7 @@ class ErrorScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Label(self.message, classes="error-message"),
+            Label(self.message, classes="error-message", markup=False),
             Button("OK", variant="primary", id="ok"),
             classes="modal"
         )
@@ -204,7 +204,7 @@ class ProjectConfigTUI(App):
     def on_mount(self) -> None:
         self.query_one(_CONFIG_LIST_ID).focus()
         if self.warning:
-            self.notify(self.warning, severity="warning", timeout=15)
+            self.notify(self.warning, severity="warning", timeout=15, markup=False)
 
     def get_value(self, key: str) -> str:
         """Fetch and format the current config value.
@@ -275,7 +275,8 @@ class ProjectConfigTUI(App):
                 # unresolvable key.
                 self._set(key, [{source: DependencyConfig(enabled=True)} for source in parsed])
             else:
-                self._set(key, TypeAdapter(Config.model_fields[key].annotation).validate_python(new_value))
+                value = yaml.safe_load(new_value) if isinstance(current_value, (dict, list)) else new_value
+                self._set(key, TypeAdapter(Config.model_fields[key].annotation).validate_python(value))
             self.refresh_list()
         except Exception as e:
             self.push_screen(ErrorScreen(
