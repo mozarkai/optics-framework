@@ -27,6 +27,7 @@ from optics_framework.common.config_handler import (
     load_project_yaml,
     parse_yaml,
 )
+from optics_framework.common.popup_guard import PopupRun
 from optics_framework.common.session_manager import SessionManager
 from optics_framework.api.app_management import AppManagement
 from optics_framework.api.action_keyword import ActionKeyword
@@ -41,6 +42,9 @@ from optics_framework.common.models import (
     ElementData,
     ApiData,
     ErrorDefinitions,
+    PopupRule,
+    merge_popup_rules,
+    parse_popup_rules,
 )
 
 T = TypeVar("T", bound=Callable[..., Any])
@@ -499,6 +503,30 @@ class Optics:
                 description=meta.get("description", ""),
                 severity=meta.get("severity", ""),
             )
+
+    @keyword("Add Popup Rules")
+    def add_popup_rules(self, rules: list[dict[str, Any] | PopupRule]) -> None:
+        """Add popup rules to the active session; a rule replaces the earlier one of the same name."""
+        if not self.session_id or self.session_id not in self.session_manager.sessions:
+            raise OpticsError(Code.E0101, message=INVALID_SETUP)
+        config = self.session_manager.sessions[self.session_id].config
+        config.popup_rules = merge_popup_rules(config.popup_rules, parse_popup_rules(rules, "add_popup_rules"))
+
+    @keyword("Get Popup Events")
+    def get_popup_events(self) -> List[Dict[str, Any]]:
+        """The popups the guard inspected in this session, oldest first: the rule, action, verdict, ``popup_text`` and
+        the saved evidence of each. A runner publishes these itself; this is for use without one."""
+        return list(self._popup_run().events)
+
+    @keyword("Get Popup Summary")
+    def get_popup_summary(self) -> List[str]:
+        """One line for each rule's handled, limit and stopped counts, then one for each unknown popup."""
+        return self._popup_run().summary_lines()
+
+    def _popup_run(self) -> PopupRun:
+        if not self.action_keyword:
+            raise OpticsError(Code.E0101, message=INVALID_SETUP)
+        return self.action_keyword._popup_run()
 
     @keyword("Capture And Detect Errors")
     def capture_and_detect(
