@@ -4,12 +4,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from optics_framework.common.error import Code, OpticsError
-from optics_framework.common.permissions import ANDROID_PERMISSIONS
 from optics_framework.engines.drivers.appium import Appium
 
 pytestmark = pytest.mark.white_box
 
-(CAMERA,) = ANDROID_PERMISSIONS["camera"]
+CAMERA = "android.permission.CAMERA"
 
 
 def _driver(platform="Android", permissions=None, package: str | None = "in.app"):
@@ -32,7 +31,7 @@ def test_allow_grants_and_deny_revokes_for_the_app_under_test():
     assert _calls(instance) == [
         ("mobile: changePermissions", {"action": "grant", "appPackage": "in.app", "permissions": [CAMERA]}),
         ("mobile: changePermissions", {"action": "revoke", "appPackage": "in.app",
-                                       "permissions": list(ANDROID_PERMISSIONS["notifications"])}),
+                                       "permissions": ["android.permission.POST_NOTIFICATIONS"]}),
     ]
 
 

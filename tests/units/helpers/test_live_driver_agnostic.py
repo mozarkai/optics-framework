@@ -47,16 +47,17 @@ class TestConfigErrorSurfacing:
         cfg = live_mod._compose_config(d)
         assert live_mod._enabled_drivers(cfg) == ["playwright"]
 
-    def test_a_bad_popup_rule_names_the_rule_field_and_value(self):
+    def test_optics_live_stops_on_a_bad_popup_rule_naming_the_rule_field_and_value(self, capsys):
         d = _project(_PLAYWRIGHT + """
 popup_rules:
   - {name: Rate Us, detect: {text_contains: [rate us]}, action: {type: swipe, target: Later}}
 """)
-        with pytest.raises(OpticsError) as exc:
-            live_mod._compose_config(d)
-        assert exc.value.code == Code.E0501
-        assert "popup_rules['Rate Us'].action.type" in exc.value.message
-        assert "'swipe'" in exc.value.message
+        with pytest.raises(SystemExit) as exc:
+            live_mod.live_main(d)
+        assert exc.value.code == 1
+        error = capsys.readouterr().err
+        assert "popup_rules['Rate Us'].action.type" in error
+        assert "'swipe'" in error
 
 
 def _shell(driver: str, caps: dict) -> LiveController:
