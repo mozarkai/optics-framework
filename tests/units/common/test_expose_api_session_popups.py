@@ -6,7 +6,8 @@ import pytest
 from fastapi import HTTPException
 
 from optics_framework.common import expose_api
-from optics_framework.common.expose_api import AppiumSettingsUpdate, PopupRulesUpdate, SessionConfig
+from optics_framework.common.expose_api import AppiumSettingsUpdate, PopupRulesUpdate, SessionConfig, SessionModulesUpdate
+from optics_framework.common.models import ElementData
 from tests.units.popup_helpers import rule_dict
 
 
@@ -83,3 +84,43 @@ def test_a_driver_that_cannot_change_settings_is_refused_and_a_device_refusal_is
         asyncio.run(expose_api.update_appium_settings("s1", AppiumSettingsUpdate(settings={"a": 1})))
     assert failed.value.status_code == 500
     assert "no such setting" in failed.value.detail
+
+
+MODULES_CSV = "module_name,module_step,param_1\nDismiss Rate Us,press element,${maybe_later}\n"
+ELEMENTS_CSV = "Element_Name,Element_ID\nmaybe_later,Maybe Later\n"
+
+
+def test_a_session_started_with_modules_and_elements_can_run_them(monkeypatch):
+    captured = {}
+
+    def create_session(config, **kwargs):
+        captured.update(kwargs)
+        return "session-1"
+
+    async def launch_app(session_id, request):
+        return SimpleNamespace(data={"result": "driver-1"})
+
+    monkeypatch.setattr(expose_api.session_manager, "create_session", create_session)
+    monkeypatch.setattr(expose_api, "execute_keyword", launch_app)
+    monkeypatch.setattr(expose_api, "reconfigure_logging", lambda config: None)
+    asyncio.run(expose_api.create_session(SessionConfig(modules_csv=MODULES_CSV, elements_csv=ELEMENTS_CSV)))
+    assert captured["modules"].modules == {"Dismiss Rate Us": [("press element", ["${maybe_later}"])]}
+    assert captured["elements"].elements == {"maybe_later": ["Maybe Later"]}
+
+
+def test_the_modules_of_a_running_session_are_replaced_and_its_elements_added_to(monkeypatch):
+    session = SimpleNamespace(modules=None, elements=ElementData(elements={"kept": ["Kept"]}))
+    _running(monkeypatch, session)
+    result = asyncio.run(expose_api.replace_session_modules("s1", SessionModulesUpdate(modules_csv=MODULES_CSV, elements_csv=ELEMENTS_CSV)))
+    assert result == {"modules": 1, "elements": 1}
+    assert list(session.modules.modules) == ["Dismiss Rate Us"]
+    assert session.elements.elements == {"kept": ["Kept"], "maybe_later": ["Maybe Later"]}
+    asyncio.run(expose_api.replace_session_modules("s1", SessionModulesUpdate()))
+    assert session.modules is None, "empty text removes the modules"
+
+
+def test_an_unknown_session_is_a_404_for_the_modules_route(monkeypatch):
+    monkeypatch.setattr(expose_api.session_manager, "get_session", lambda session_id: None)
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(expose_api.replace_session_modules("nope", SessionModulesUpdate()))
+    assert caught.value.status_code == 404

@@ -1,4 +1,6 @@
 import base64
+import csv
+import io
 import json
 import os
 import re
@@ -18,7 +20,7 @@ from fastapi import status
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
-from optics_framework.common.models import ApiData, ElementData, parse_popup_rules
+from optics_framework.common.models import ApiData, ElementData, ModuleData, parse_popup_rules
 from optics_framework.common.execution import (
     ExecutionEngine,
     ExecutionParams,
@@ -30,10 +32,12 @@ from optics_framework.common import fallback
 from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common.config_handler import Config, DependencyConfig, env_names
 from optics_framework.common.caller_policy import refuse_local_capabilities
+from optics_framework.common.runner.data_reader import csv_rows, elements_from_rows, modules_from_rows
 from optics_framework.common.runner.event_stream import OutputMode
-from optics_framework.common.runner.keyword_register import KeywordRegistry, keyword_not_found
+from optics_framework.common.runner.keyword_register import keyword_not_found
 from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64, redact_url
-from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
+from optics_framework.api import Verifier
+from optics_framework.api.keywords import build_keywords
 from optics_framework.api.flow_control import reads_environment
 from optics_framework.helper.execute import discover_templates
 from optics_framework.helper.version import VERSION
@@ -148,6 +152,13 @@ class PopupRulesUpdate(BaseModel):
     """Request model for replacing a running session's popup rules."""
 
     popup_rules: List[Dict[str, Any]] = []
+
+
+class SessionModulesUpdate(BaseModel):
+    """Request model for replacing the modules a running session can run, such as the one a popup rule runs."""
+
+    modules_csv: str = ""
+    elements_csv: str = ""
 
 
 class AppiumSettingsUpdate(BaseModel):
@@ -367,6 +378,8 @@ class SessionConfig(BaseModel):
     appium_config: Optional[Dict[str, Any]] = None
     strict_element_match: Optional[bool] = None
     popup_rules: List[Dict[str, Any]] = []
+    modules_csv: str = ""  # module_name,module_step,param_n rows, for a popup rule that runs a module
+    elements_csv: str = ""  # Element_Name,Element_ID rows those modules name
     permissions: Dict[str, Literal["allow", "deny"]] = {}  # Android only, applied as the session starts
     api_data: Optional[Dict[str, Any]] = None  # Inline API definitions only; file path not supported in REST
 
@@ -609,12 +622,13 @@ async def create_session(config: SessionConfig):
             discover_templates(config.project_path) if config.project_path else None
         )
         apis = _session_apis(config)
+        modules, elements = _read_session_modules(config.modules_csv, config.elements_csv)
         session_id = await asyncio.to_thread(
             session_manager.create_session,
             session_config,
             test_cases=None,
-            modules=None,
-            elements=ElementData(),
+            modules=modules,
+            elements=elements,
             apis=apis,
             templates=templates,
         )
@@ -930,21 +944,14 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
             message=f"Starting keyword: {request.keyword}"
         ).model_dump())
 
-        registry = KeywordRegistry()
-        action_keyword = session.optics.build(ActionKeyword)
-        action_keyword.start_popup_run()
-        app_management = session.optics.build(AppManagement)
-        verifier = session.optics.build(Verifier)
-        registry.register(action_keyword)
-        registry.register(app_management)
-        registry.register(verifier)
-        registry.register(FlowControl(session=session, keyword_map=registry.keyword_map))
+        keywords = build_keywords(session)
+        keywords.action_keyword.start_popup_run()
 
         keyword_slug = "_".join(request.keyword.split()).lower()
-        method = registry.keyword_map.get(keyword_slug)
+        method = keywords.keyword_map.get(keyword_slug)
 
         if not method:
-            raise keyword_not_found(request.keyword, registry.keyword_map)
+            raise keyword_not_found(request.keyword, keywords.keyword_map)
         _reject_server_env_read(keyword_slug, request.params)
 
         result = await _execute_keyword_with_fallback(
@@ -1005,6 +1012,59 @@ async def upload_template(session_id: str, body: TemplateUploadRequest):
     await asyncio.to_thread(_write_bytes_to_path, path, raw)
     session.inline_templates[body.name] = path
     return {"name": body.name, "status": STATUS_OK}
+
+
+_REQUIRED_COLUMNS = {"modules_csv": ("module_name", "module_step"), "elements_csv": ("element_name",)}
+
+
+def _request_rows(text: str, field: str) -> list:
+    """A request CSV's rows; a row a project file would skip is refused instead of silently dropping what it held."""
+    text = text.lstrip("\ufeff")
+    required = _REQUIRED_COLUMNS[field]
+    headers = {h.strip().lower() for h in next(csv.reader(io.StringIO(text)), [])}
+    if text.strip() and not headers.issuperset(required):
+        raise OpticsError(Code.E0501, message=f"{field} needs the columns {', '.join(required)}")
+    rows = csv_rows(io.StringIO(text))
+    for n, row in enumerate(rows, 1):
+        filled = any(str(value).strip() for key, value in row.items() if key is not None)
+        if filled and not all(row.get(column, "").strip() for column in required):
+            raise OpticsError(Code.E0501, message=f"{field} row {n} needs {' and '.join(required)}")
+    return rows
+
+
+def _read_session_modules(modules_csv: str, elements_csv: str) -> Tuple[Optional[ModuleData], ElementData]:
+    """The modules and elements the CSV text holds, parsed as a project's own CSV files are."""
+    try:
+        modules = modules_from_rows(_request_rows(modules_csv, "modules_csv"))
+        elements = elements_from_rows(_request_rows(elements_csv, "elements_csv"))
+    except (csv.Error, ValueError, KeyError, TypeError) as e:
+        raise OpticsError(Code.E0501, message="The modules or elements CSV could not be read", cause=e) from e
+    return (ModuleData(modules=modules) if modules else None), ElementData(elements=elements)
+
+
+@app.put(
+    "/v1/sessions/{session_id}/modules",
+    responses={
+        400: {"description": "Modules or elements that cannot be read (E0501)"},
+        404: {"description": "Session not found"},
+    },
+)
+async def replace_session_modules(session_id: str, body: SessionModulesUpdate):
+    """
+    Replace the modules the session can run, and add the elements they name. A popup rule that runs a module
+    reads them on every check, so the next step already uses them. Empty text removes the modules.
+    """
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
+    try:
+        modules, elements = _read_session_modules(body.modules_csv, body.elements_csv)
+    except OpticsError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
+    session.modules = modules
+    if isinstance(session.elements, ElementData):
+        session.elements.elements.update(elements.elements)
+    return {"modules": len(modules.modules) if modules else 0, "elements": len(elements.elements)}
 
 
 @app.put(
