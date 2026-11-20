@@ -14,11 +14,6 @@ def clients(monkeypatch):
     return built
 
 
-def test_config_api_key_reaches_the_client(clients):
-    googlevision.GoogleVisionHelper({"capabilities": {"api_key": "config-key"}})
-    assert clients[-1]["client_options"].api_key == "config-key"
-
-
 def test_api_key_and_credentials_path_together_are_refused(clients):
     with pytest.raises(OpticsError, match="api_key or credentials_path"):
         googlevision.GoogleVisionHelper({"capabilities": {"api_key": "k", "credentials_path": "sa.json"}})

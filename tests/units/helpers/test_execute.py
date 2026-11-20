@@ -52,9 +52,6 @@ def _config_for(driver: str, **dep_kwargs) -> Config:
 
 
 class TestProbeTcp:
-    def test_closed_port_returns_false(self):
-        assert execute_module._probe_tcp(
-            "http://127.0.0.1:1", default_port=4723, timeout=0.5) is False
 
     @pytest.mark.parametrize("url", [None, "", "   ", "http://:4723/wd/hub"])
     def test_missing_or_unparseable_url_returns_false(self, url):

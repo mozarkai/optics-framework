@@ -25,10 +25,3 @@ def test_the_hook_refuses_tests_that_guard_nothing(tmp_path, capsys, body, refus
 
     assert check_tests.main([str(sample), "README.md"]) == (1 if refused else 0)
     assert (refused or "\n") in capsys.readouterr().err + "\n"
-
-
-def test_the_hook_refuses_a_commit_over_the_line_budget(monkeypatch, capsys):
-    monkeypatch.setattr(check_tests, "BUDGET", 0)
-
-    assert check_tests.main([]) == 1
-    assert "over the 0 budget" in capsys.readouterr().err

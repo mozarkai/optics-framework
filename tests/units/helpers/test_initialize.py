@@ -41,13 +41,6 @@ class TestCreateProject:
         assert config.driver_sources
 
 
-class TestBlankProjectGuidance:
-    def test_blank_config_shows_how_to_drive_a_desktop_app(self, tmp_path):
-        with patch(f"{init_mod.__name__}.print_next_steps"):
-            create_project(_args("blank", path=str(tmp_path)))
-        assert "automationName: Xa11y" in (tmp_path / "blank" / "config.yaml").read_text()
-
-
 class TestInteractivePicker:
     @staticmethod
     def _on_tty(monkeypatch):

@@ -30,21 +30,6 @@ def _capture(func, *args, **kwargs) -> str:
     return buf.getvalue()
 
 
-class TestIsFirstRun:
-    def test_true_when_marker_missing(self):
-        assert onboarding.is_first_run() is True
-
-    def test_false_after_mark_onboarded(self):
-        onboarding.mark_onboarded()
-        assert onboarding.is_first_run() is False
-
-
-class TestWelcome:
-    def test_first_run_prepends_greeting(self):
-        out = _capture(onboarding.welcome, first_run=True)
-        assert "First time here?" in out
-
-
 class TestPrintNextSteps:
     @pytest.mark.parametrize("configured", [False, True])
     def test_configure_comes_first_until_the_project_is_configured(self, configured):

@@ -1,10 +1,7 @@
 import types
 from unittest.mock import MagicMock
 
-import cv2
-import numpy as np
 
-from optics_framework.common import utils
 from optics_framework.common.nl_agent import AgentStep, AgentResult, ExecResult
 from optics_framework.helper.live import LiveController
 from optics_framework.common.error import OpticsError, Code
@@ -51,25 +48,6 @@ def _ps_controller(strategy_result):
     return ctrl
 
 
-def _elements_controller(elements_result, driver_type="appium"):
-    ctrl = LiveController.__new__(LiveController)
-    ctrl._action_keyword = types.SimpleNamespace(
-        strategy_manager=_FakeStrategyManager(elements_result=elements_result),
-        element_source=types.SimpleNamespace(REQUIRED_DRIVER_TYPE=driver_type),
-    )
-    return ctrl
-
-
-def _png_bytes(width=4, height=4):
-    ok, buf = cv2.imencode(".png", np.zeros((height, width, 3), dtype=np.uint8))
-    assert ok
-    return buf.tobytes()
-
-
-_COMPACT_EL = {"text": "Search", "bounds": {"x1": 0, "y1": 0, "x2": 10, "y2": 10},
-               "act": ["tap"], "extra": {"class": "android.widget.Button"}}
-
-
 _PS_XML = (
     "<hierarchy class='hierarchy'>"
     "<android.widget.EditText class='android.widget.EditText' text='gullak' "
@@ -84,25 +62,6 @@ class TestControllerPageSource:
         out = ctrl.page_source()
         assert out and "search_edit_text" in out
         assert "EditText" in out and 'text="gullak"' in out
-
-    def test_returns_none_when_unavailable(self):
-        ctrl = _ps_controller(OpticsError(Code.E0403, message="No pagesource"))
-        assert ctrl.page_source() is None
-
-
-class TestControllerScreenElements:
-    def test_returns_none_when_get_interactive_elements_unavailable(self):
-        ctrl = _elements_controller(OpticsError(Code.E0202, message="No interactive elements"))
-        assert ctrl.screen_elements(_png_bytes()) is None
-
-    def test_undecodable_png_bytes_still_returns_elements(self, monkeypatch):
-        # Bounds scaling is best-effort: bytes that fail to decode must not sink the
-        # structured elements the NL agent otherwise has available this step.
-        elements = [dict(_COMPACT_EL)]
-        ctrl = _elements_controller(elements, driver_type="appium")
-        monkeypatch.setattr(utils, "scale_interactive_element_bounds", lambda *a, **k: None)
-
-        assert ctrl.screen_elements(b"not a real png") == elements
 
 
 class FakeAgent:

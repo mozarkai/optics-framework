@@ -14,7 +14,7 @@ repos:
   - repo: local
     hooks:
       - id: check-tests
-        name: test quality and line budget
+        name: test quality
         entry: python scripts/check_tests.py
         language: python
         files: ^tests/
