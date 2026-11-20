@@ -572,6 +572,8 @@ class LiveController:
                 elapsed=time.time() - start,
             )
 
+        if self._action_keyword is not None:
+            self._action_keyword.start_popup_run()
         typing = self._typing(method, func_name, params)
         secret = self._typed_secret(func_name, typing)
         if secret:

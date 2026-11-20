@@ -1129,11 +1129,15 @@ class StrategyManager:
         )
 
     def capture_pagesource(self) -> Optional[Tuple[str, str]]:
+        return self.capture_pagesource_from()[0]
+
+    def capture_pagesource_from(self) -> Tuple[Optional[Tuple[str, str]], ElementSourceInterface]:
+        """The page source and the element source that gave it."""
         self.require_screen()
         last_error: Exception | None = None
         for strategy in self.pagesource_strategies:
             try:
-                return strategy.capture_pagesource()
+                return strategy.capture_pagesource(), strategy.element_source
             except Exception as e:
                 internal_logger.debug(
                     f"Pagesource capture failed with {strategy.__class__.__name__}: {e}")
