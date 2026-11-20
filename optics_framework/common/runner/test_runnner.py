@@ -12,7 +12,7 @@ import shutil
 import sys
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Dict, List, Optional, Union, Any
+from typing import Callable, Dict, List, NoReturn, Optional, Union, Any
 import pytest
 from optics_framework.common.session_manager import Session
 from optics_framework.common.error import ERROR_REGISTRY, OpticsError, Code, explain, undefined_element
@@ -1214,6 +1214,11 @@ class TestRunner(Runner):
         self.result_printer.stop_live()
 
 
+def _fail(reason: str) -> NoReturn:
+    """Fail the pytest case with the reason alone: its frames add nothing and would print their arguments unmasked."""
+    pytest.fail(mask_secrets(reason), pytrace=False)
+
+
 class PytestRunner(Runner):
     instance = None
 
@@ -1248,7 +1253,7 @@ class PytestRunner(Runner):
             return param
         value = self.elements.get_first(var_name)
         if value is None:
-            pytest.fail(f"Variable '{var_name}' not found")
+            _fail(f"Variable '{var_name}' not found")
         return value
 
     def _execute_keyword(
@@ -1376,9 +1381,8 @@ class PytestRunner(Runner):
 
     def _handle_keyword_fail(self, keyword, keyword_id, module_id, error: BaseException):
         explanation = explain(error)
-        msg = mask_secrets(explanation.summary)
-        self._queue_event_fail(keyword, keyword_id, module_id, msg, explanation.code or Code.X0401, explanation.hint)
-        pytest.fail(msg)
+        self._queue_event_fail(keyword, keyword_id, module_id, explanation.summary, explanation.code or Code.X0401, explanation.hint)
+        _fail(explanation.summary)
 
     def _process_module(
         self, module_name: str, dry_run: bool = False, testcase_id: str = "unknown"
@@ -1416,7 +1420,7 @@ class PytestRunner(Runner):
                 ),
                 self.event_manager
             )
-            pytest.fail(reason)
+            _fail(reason)
 
         steps = [step for step in module_steps if isinstance(step, tuple) and len(step) == 2]
         passed = stopped = False
