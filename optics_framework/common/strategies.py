@@ -419,12 +419,10 @@ def _assert_miss(
     first = next(((i, note) for i, note in invalid if note), None)
     if first is not None:
         return ElementNotFound(elements[first[0]], cause=first[1])
-    return OpticsError(
-        Code.E0201,
-        message=_absent([elements[i] for i in missing], rule),
-        cause=state.last_exception,
-        hint=OCR_NOT_TRIED_MSG if ocr_skipped else None,
-    )
+    hint = OCR_NOT_TRIED_MSG if ocr_skipped else None
+    if len(missing) == 1:
+        return ElementNotFound(elements[missing[0]], cause=state.last_exception, hint=hint)
+    return OpticsError(Code.E0201, message=_absent([elements[i] for i in missing], rule), cause=state.last_exception, hint=hint)
 
 
 def _is_unconfigured_ocr(strategy: LocatorStrategy) -> bool:
