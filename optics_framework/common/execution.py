@@ -87,7 +87,7 @@ class BatchExecutor(Executor):
                 entity_id=session.session_id,
                 name="Execution",
                 status=EventStatus.FAIL,
-                message="Execution failed: %s" % str(e),
+                message=f"Execution failed: {plain(e)}",
                 extra={"session_id": session.session_id}
             ))
             raise
@@ -196,7 +196,7 @@ class KeywordExecutor(Executor):
                     entity_id=session.session_id,
                     name=self.keyword,
                     status=EventStatus.FAIL,
-                    message="Keyword execution failed: %s" % str(e),
+                    message=f"Keyword execution failed: {plain(e)}",
                     extra={"session_id": session.session_id}
                 ))
                 if isinstance(e, OpticsError):
@@ -344,7 +344,7 @@ class ExecutionEngine:
                 _execution_event(
                     params.session_id,
                     EventStatus.ERROR,
-                    f"Failed to create keyword executor: {str(e)}",
+                    f"Failed to create keyword executor: {plain(e)}",
                 )
             )
             raise OpticsError(Code.E0401, message=f"Failed to create keyword executor: {plain(e)}") from e
@@ -362,7 +362,7 @@ class ExecutionEngine:
             return await executor.execute(session, runner)
         except Exception as e:
             await event_manager.publish_event(
-                _execution_event(params.session_id, EventStatus.ERROR, f"Execution failed: {str(e)}")
+                _execution_event(params.session_id, EventStatus.ERROR, f"Execution failed: {plain(e)}")
             )
             if isinstance(e, OpticsError):
                 raise
@@ -417,7 +417,7 @@ class ExecutionEngine:
                 return await self._run_executor(executor, session, runner, event_manager, params)
             except Exception as e:
                 await event_manager.publish_event(
-                    _execution_event(params.session_id, EventStatus.FAIL, f"Execution failed: {str(e)}")
+                    _execution_event(params.session_id, EventStatus.FAIL, f"Execution failed: {plain(e)}")
                 )
                 internal_logger.error("Execution error in session %s: %s", params.session_id, e)
                 if isinstance(e, OpticsError):

@@ -635,12 +635,14 @@ async def create_session(config: SessionConfig):
             session_id=session_id,
             driver_id=(driver_session.data or {}).get(KEY_RESULT)
         )
+    except HTTPException:
+        raise
     except OpticsError as e:
         internal_logger.error(f"Failed to create session: {e}")
         raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
     except Exception as e:
         internal_logger.error(f"Failed to create session: {e}")
-        raise HTTPException(status_code=500, detail=f"{MSG_SESSION_CREATION_FAILED} {e}") from e
+        raise HTTPException(status_code=500, detail=f"{MSG_SESSION_CREATION_FAILED} {plain(e)}") from e
 
 
 def _normalize_param_value(name: str, val: Union[str, List[str]], is_list_param: bool = False) -> List[str]:
@@ -890,7 +892,7 @@ async def _handle_execution_failure(
     ).model_dump())
     if isinstance(e, OpticsError):
         raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
-    raise HTTPException(status_code=500, detail=f"{MSG_EXECUTION_FAILED} {str(e)}") from e
+    raise HTTPException(status_code=500, detail=f"{MSG_EXECUTION_FAILED} {plain(e)}") from e
 
 
 @app.post(
@@ -1346,7 +1348,7 @@ async def workspace_generator(
             internal_logger.error(f"Error in workspace stream for session {session.session_id}: {e}")
             yield {KEY_DATA: json.dumps({
                 KEY_TYPE: WORKSPACE_TYPE_ERROR,
-                KEY_MESSAGE: str(e),
+                KEY_MESSAGE: plain(e),
                 KEY_SCREENSHOT: "",
                 KEY_ELEMENTS: [],
                 KEY_SCREENSHOT_FAILED: True
