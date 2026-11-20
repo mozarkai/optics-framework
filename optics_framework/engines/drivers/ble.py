@@ -532,7 +532,7 @@ class BLEDriver(DriverInterface):
                 return self._tap_icon(shown, labels[0], "drawer_list", name)
             self.scroll("down")
             moved = self._read()
-            if moved is not None and _overlap(shown, moved) > SAME_SCREEN:
+            if moved is not None and not _labels(moved, name) and _overlap(shown, moved) > SAME_SCREEN:
                 return False
             shown = moved
         return False
