@@ -443,41 +443,27 @@ class FlowControl:
         return self.modules.get_module_definition(actual_cond) is not None
 
     def _handle_module_condition(self, cond_str: str, target: str) -> Optional[List[Any]]:
-        """Handles evaluation and execution for module-based conditions."""
-        # Strip "!" prefix if present and determine if we need to invert the result
+        """Runs ``target`` when the condition module passes, or fails with a ``!`` prefix."""
         invert = cond_str.startswith("!")
         actual_cond = cond_str[1:].strip() if invert else cond_str
-
-        try:
-            self.execute_module(actual_cond)
-            # Module executed successfully
-            if invert:
-                # If inverted, success means we should NOT execute target
-                execution_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' succeeded, but condition is inverted. Skipping target '{target}'.")
-                return None
-            # If not inverted, success means we should execute target
-            try:
-                return self.execute_module(target)
-            except StepFailed:
-                raise
-            except Exception as e:
-                execution_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
-                raise StepFailed((target,), e) from e
-        except Exception as e:
-            # Module execution failed
-            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' raised error: {e}.")
-            if invert:
-                # If inverted, failure means we SHOULD execute target
-                internal_logger.debug(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' failed, but condition is inverted. Executing target '{target}'.")
-                try:
-                    return self.execute_module(target)
-                except StepFailed:
-                    raise
-                except Exception as target_e:
-                    internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {target_e}.")
-                    raise StepFailed((target,), target_e) from target_e
-            # If not inverted, failure means we should NOT execute target
+        if self._module_passes(actual_cond) == invert:
+            internal_logger.debug(f"[_EVALUATE_CONDITIONS] Condition '{cond_str}' is not met. Skipping target '{target}'.")
             return None
+        try:
+            return self.execute_module(target)
+        except StepFailed:
+            raise
+        except Exception as e:
+            execution_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
+            raise StepFailed((target,), e) from e
+
+    def _module_passes(self, module: str) -> bool:
+        try:
+            self.execute_module(module)
+        except Exception as e:
+            internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{module}' raised error: {e}.")
+            return False
+        return True
 
     def _handle_expression_condition(self, cond_str: str, target: str) -> Optional[List[Any]]:
         """Handles evaluation and execution for expression-based conditions."""
