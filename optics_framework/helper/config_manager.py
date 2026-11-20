@@ -3,7 +3,6 @@ import sys
 from typing import Any, NamedTuple
 
 import yaml
-from pydantic import TypeAdapter
 from rich.prompt import Confirm
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -11,7 +10,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, Label, ListView, ListItem, Static
 
 from optics_framework.common import safe_fs
-from optics_framework.common.config_handler import Config, ConfigHandler, DependencyConfig, config_from, load_project_yaml
+from optics_framework.common.config_handler import Config, ConfigHandler, DependencyConfig, config_from, load_project_yaml, parse_yaml
 from optics_framework.common.error import OpticsError
 
 _CONFIG_LIST_ID = "#config-list"
@@ -41,6 +40,8 @@ def _load_project_config(folder: str) -> ProjectConfig:
     try:
         data = load_project_yaml(path) or {}
     except (yaml.YAMLError, OSError):
+        return ProjectConfig(Config(), {}, None)
+    if not isinstance(data, dict):
         return ProjectConfig(Config(), {}, None)
     try:
         return ProjectConfig(config_from(data), {}, None)
@@ -197,7 +198,7 @@ class ProjectConfigTUI(App):
             "↑/↓ move · Space edits the highlighted field · S saves · Q quits",
             classes="option-label",
         )
-        yield ListView(*[ListItem(Label(f"{key}: {self.get_value(key)}", classes="option-label"))
+        yield ListView(*[ListItem(Label(f"{key}: {self.get_value(key)}", classes="option-label", markup=False))
                        for key in self.options], id="config-list")
         yield Footer()
 
@@ -275,8 +276,8 @@ class ProjectConfigTUI(App):
                 # unresolvable key.
                 self._set(key, [{source: DependencyConfig(enabled=True)} for source in parsed])
             else:
-                value = yaml.safe_load(new_value) if isinstance(current_value, (dict, list)) else new_value
-                self._set(key, TypeAdapter(Config.model_fields[key].annotation).validate_python(value))
+                value = parse_yaml(new_value, key) if isinstance(current_value, (dict, list)) else new_value
+                self._set(key, getattr(config_from({**self.config.model_dump(), key: value}), key))
             self.refresh_list()
         except Exception as e:
             self.push_screen(ErrorScreen(
