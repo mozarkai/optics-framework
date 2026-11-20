@@ -123,7 +123,7 @@ def bind_params(name: str, method: Callable, positional: List[Any], keywords: Di
         ) from e
 
 
-def step_candidates(method: Callable, params: List[Any], elements: ElementData) -> List[List[Any]]:
+def step_candidates(method: Callable, params: List[Any], elements: ElementData, undefined: Callable[[str], OpticsError] = undefined_element) -> List[List[Any]]:
     """Each param's values for the fallback ladder: every value of a whole ``${name}`` param, else the param itself."""
     raw = utils.raw_param_indices(method)
     candidates = []
@@ -131,13 +131,13 @@ def step_candidates(method: Callable, params: List[Any], elements: ElementData) 
         name = None if i in raw else utils.whole_var_name(param)
         values = [param] if name is None else elements.get_element(name)
         if not values:
-            raise undefined_element(str(name))
+            raise undefined(str(name))
         candidates.append(list(values))
     test_context.name_locators(params, elements.get_element)
     return candidates
 
 
-def step_arguments(method: Callable, combo: Iterable[Any], elements: ElementData) -> Tuple[List[Any], Dict[str, Any]]:
+def step_arguments(method: Callable, combo: Iterable[Any], elements: ElementData, undefined: Callable[[str], OpticsError] = undefined_element) -> Tuple[List[Any], Dict[str, Any]]:
     """One combination's positional and named args, split by the keyword's signature, with ``${name}`` resolved."""
     def resolve(param: Any) -> Any:
         name = utils.whole_var_name(param)
@@ -145,7 +145,7 @@ def step_arguments(method: Callable, combo: Iterable[Any], elements: ElementData
             return param
         value = elements.get_first(name)
         if value is None:
-            raise undefined_element(name)
+            raise undefined(name)
         return value
 
     params = utils.substitute_inline(method, list(combo), elements)

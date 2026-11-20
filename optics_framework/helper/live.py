@@ -30,7 +30,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import yaml
 
-from optics_framework.common import fallback, keyword_outcome, test_context, utils
+from optics_framework.common import fallback, keyword_outcome, utils
 from optics_framework.common.config_handler import Config, DependencyConfig, load_project_yaml, resolve_config_file
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.agent_core import (
@@ -57,6 +57,8 @@ from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
     DataReader,
+    step_arguments,
+    step_candidates,
 )
 from optics_framework.common.utils import escape_csv_value
 from optics_framework.common.nl_agent import (
@@ -296,6 +298,10 @@ def _compose_config(folder_path: Optional[str]) -> Config:
         )
     config.popup_rules = merge_project_popup_rules(config.popup_rules, folder_path)
     return config
+
+
+def _undefined_element(name: str) -> OpticsError:
+    return OpticsError(Code.E0901, message=f"Named element '{name}' is not defined in this project's elements.")
 
 
 class LiveController:
@@ -557,12 +563,10 @@ class LiveController:
                 message=self._unknown_keyword_message(guessed),
             )
 
-        if any("${" in p for p in params):
-            self.ensure_elements_loaded()
         method = self.keyword_map[func_name]
 
         try:
-            param_candidates = self._build_candidates(params)
+            param_candidates = step_candidates(method, params, self._session_elements(), _undefined_element)
         except OpticsError as exc:
             return ActionResult(
                 raw=raw,
@@ -633,7 +637,7 @@ class LiveController:
     def _run_single_combo(self, method: Callable[..., Any], combo: Tuple[str, ...]) -> tuple[Any, str | None]:
         """Run one combination; returns its value and strategy, raising E0401 for an error logged without a raise."""
         with keyword_outcome.capture() as outcome:
-            positional, keywords = self._resolve_candidate(method, combo)
+            positional, keywords = step_arguments(method, combo, self._session_elements(), _undefined_element)
             value = method(*positional, **keywords)
         if outcome.silent is not None:
             raise OpticsError(Code.E0401, message=outcome.silent)
@@ -676,12 +680,14 @@ class LiveController:
 
     def _agent_call(self, keyword: str, params: dict[str, Value]) -> tuple[Any, str | None]:
         """Run one agent call as ``name=value`` params, each list a fallback; returns its value and strategy."""
-        expanded = iter(self._build_candidates([v for v in params.values() if not isinstance(v, list)]))
+        method = self.keyword_map[keyword]
+        values = [v for v in params.values() if not isinstance(v, list)]
+        expanded = iter(step_candidates(method, values, self._session_elements(), _undefined_element))
         candidates = [
             [f"{name}={v}" for v in (value if isinstance(value, list) else next(expanded))]
             for name, value in params.items()
         ]
-        result = self._attempt_combos(self.keyword_map[keyword], candidates, keyword, keyword, [], time.time())
+        result = self._attempt_combos(method, candidates, keyword, keyword, [], time.time())
         if result.error is not None:
             raise result.error
         return result.value, result.strategy
@@ -730,55 +736,6 @@ class LiveController:
         if self.session.elements is None:
             self.session.elements = ElementData()
         return self.session.elements
-
-    def _build_candidates(self, params: List[str]) -> List[List[str]]:
-        """Expand each positional ``${element}`` into its list of fallback locators."""
-        candidates: List[List[str]] = []
-        for param in params:
-            var_name = utils.whole_var_name(param)
-            if var_name is not None:
-                values = self.session.elements.get_element(var_name) if self.session.elements else None
-                if not values:
-                    raise OpticsError(
-                        Code.E0901,
-                        message=f"Named element '{var_name}' is not defined in this project's elements.",
-                    )
-                candidates.append(list(values))
-            else:
-                candidates.append([param])
-        test_context.name_locators(params, lambda name: self.session.elements.get_element(name) if self.session.elements else None)
-        return candidates
-
-    def _resolve_candidate(self, method: Callable[..., Any], combo: Tuple[str, ...]) -> Tuple[List[str], Dict[str, str]]:
-        """Split one candidate combination into positional args and keyword args.
-
-        Whether a ``key=value`` token is a keyword argument is decided against
-        ``method``'s signature, so ``text=``/``css=``/``id=`` locators stay
-        positional (the keyword's ``element`` argument).
-        """
-        combo_list = list(combo)
-        if any("${" in p for p in combo_list):
-            combo_list = utils.substitute_inline(method, combo_list, self._session_elements())
-        positional, kw_params = DataReader.split_params_by_signature(method, combo_list)
-        raw = utils.raw_param_indices(method)
-        resolved_positional = utils.unescape_vars(
-            method, [p if i in raw else self._resolve_value(p) for i, p in enumerate(positional)]
-        )
-        resolved_kw = {key: self._resolve_value(value) for key, value in kw_params.items()}
-        return resolved_positional, resolved_kw
-
-    def _resolve_value(self, value: str) -> str:
-        """Resolve a single ``${element}`` reference to its first locator; pass through otherwise."""
-        var_name = utils.whole_var_name(value)
-        if var_name is None:
-            return value
-        resolved = self.session.elements.get_first(var_name) if self.session.elements else None
-        if resolved is None:
-            raise OpticsError(
-                Code.E0901,
-                message=f"Named element '{var_name}' is not defined in this project's elements.",
-            )
-        return resolved
 
     @staticmethod
     def _format_error(exc: Optional[BaseException]) -> str:
