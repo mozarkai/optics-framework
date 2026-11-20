@@ -27,6 +27,7 @@ def _launch_stub(url, timeout="30"):
 def _controller(keyword_map):
     ctrl = LiveController.__new__(LiveController)
     ctrl.keyword_map = keyword_map
+    ctrl._action_keyword = None
     ctrl.recorded = []
     ctrl.saved = True
     ctrl._focus = Focus()
