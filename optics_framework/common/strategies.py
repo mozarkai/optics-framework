@@ -13,17 +13,17 @@ from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger, execution_logger
 from optics_framework.common.execution_tracer import execution_tracer
 from optics_framework.engines.vision_models.base_methods import match_and_annotate
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import Code, ElementNotFound, OpticsError, plain
 from optics_framework.common.session_liveness import raise_if_session_dead
 from optics_framework.common.text_match import TextMatch, find_text
 
 # Constants
-TEXT_DETECTION_NOT_AVAILABLE_MSG = "Text detection is not available."
+TEXT_DETECTION_NOT_AVAILABLE_MSG = "No text detection (OCR) engine is configured."
 # The class of a screen row read by OCR, which knows only the text and where it is.
 OCR_TEXT_CLASS = "Text"
 # Below this, OCR is guessing at an icon or a mark; such a guess is not listed as a screen row.
 OCR_ROW_MIN_CONFIDENCE = 0.2
-OCR_NOT_TRIED_MSG = " OCR was not tried: no text_detection engine is configured."
+OCR_NOT_TRIED_MSG = "OCR is off, so text that shows only in images was not searched. Add a text_detection engine to config.yaml to search it."
 NO_SCREEN_MSG = (
     "No elements_sources entry is enabled, so Optics cannot see the screen. "
     "Add one (for example camera_screenshot) to find elements, check them or take screenshots."
@@ -376,6 +376,54 @@ def _is_blind(error: Exception) -> bool:
     return isinstance(error, OpticsError) and error.code == Code.E0305
 
 
+class NoLocatorSource(OpticsError):
+    """No configured strategy can look for the elements: a setup problem that waiting or scrolling cannot fix."""
+
+
+def _quoted(elements: list) -> str:
+    return ", ".join(f"'{element}'" for element in elements)
+
+
+def _absent(missing: list, rule: str) -> str:
+    """The elements an assertion did not see, as a sentence."""
+    if len(missing) == 1:
+        return f"{_quoted(missing)} is not on the screen."
+    if rule == "any":
+        return f"None of {_quoted(missing)} is on the screen."
+    return f"{_quoted(missing)} are not on the screen."
+
+
+def _invalid_xpath(element: str, effective: str, text_only: bool) -> Optional[OpticsError]:
+    """Why a missed XPath may never match: a syntax error, which reads better than a plain miss."""
+    if text_only or utils.determine_element_type(element) != "XPath":
+        return None
+    problem = utils.xpath_problem(effective)
+    if problem is None:
+        return None
+    return OpticsError(
+        Code.E0205,
+        message=f"'{element}' is not on the screen, and it is not valid XPath 1.0: {problem}",
+        hint="Correct the XPath. Each [ and ( needs its ] and ), and each quote needs its closing quote.",
+    )
+
+
+def _not_found(element: str, effective: str, text_only: bool, cause: Optional[Exception], hint: Optional[str]) -> OpticsError:
+    return _invalid_xpath(element, effective, text_only) or ElementNotFound(element, cause=cause, hint=hint)
+
+
+def _assert_miss(
+    elements: list, parsed: list, effective: list, state: "_AssertState", rule: str, ocr_skipped: bool
+) -> OpticsError:
+    missing = [i for i, looked in enumerate(effective) if not state.found.get(looked)] or list(range(len(elements)))
+    invalid = (_invalid_xpath(parsed[i][0], effective[i], parsed[i][1]) for i in missing)
+    return next(filter(None, invalid), None) or OpticsError(
+        Code.E0201,
+        message=_absent([elements[i] for i in missing], rule),
+        cause=state.last_exception,
+        hint=OCR_NOT_TRIED_MSG if ocr_skipped else None,
+    )
+
+
 def _is_unconfigured_ocr(strategy: LocatorStrategy) -> bool:
     return isinstance(strategy, TextDetectionStrategy) and strategy.text_detection is None
 
@@ -392,7 +440,16 @@ class ImageDetectionStrategy(LocatorStrategy):
     def element_source(self) -> ElementSourceInterface:
         return self._element_source
 
+    def _require_engine(self) -> None:
+        if self.image_detection is None:
+            raise OpticsError(
+                Code.E0201,
+                message="No image detection engine is configured",
+                hint="Add an image_detection engine, for example templatematch, to config.yaml.",
+            )
+
     def locate(self, element: str, index: int = 0) -> Optional[LocateValueWithFrame]:
+        self._require_engine()
         screenshot = screen_of(self.element_source)
         found = self.image_detection.find_element(screenshot, element, index)
         if found is None:
@@ -417,6 +474,7 @@ class ImageDetectionStrategy(LocatorStrategy):
         :param index: Zero-based index when multiple matches exist (default 0)
         :return: Coordinates in the driver's window space, or (coords, annotated_frame)
         """
+        self._require_engine()
         # Capture full screenshot
         full_screenshot = screen_of(self.element_source)
 
@@ -604,7 +662,7 @@ class PagesourceStrategy:
         except OpticsError:
             raise
         except Exception as e:
-            raise OpticsError(Code.E0403, message=f"Invalid pagesource captured: {e}") from e
+            raise OpticsError(Code.E0403, message=f"Invalid pagesource captured: {plain(e)}") from e
 
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[dict]:
         """Retrieve interactive elements from the element source.
@@ -653,7 +711,7 @@ class ScreenshotStrategy:
             if _is_blind(e):
                 raise
             internal_logger.debug(f"Error capturing screenshot: {e}")
-            raise OpticsError(Code.E0303, message=f"Error capturing screenshot: {e}")
+            raise OpticsError(Code.E0303, message="Could not take a screenshot", cause=e)
         if screenshot is not None and not utils.is_black_screen(screenshot):
             return screenshot
         held = _held_frames.get()
@@ -661,7 +719,7 @@ class ScreenshotStrategy:
             held.pop(id(self.element_source), None)
         internal_logger.warning("Invalid screenshot captured: black screen detected.")
         raise OpticsError(
-            Code.E0303, message="Invalid screenshot captured, black screen detected."
+            Code.E0303, message="The screenshot is black"
         )
 
     @staticmethod
@@ -899,18 +957,18 @@ class StrategyManager:
                 yield locate_result
         if not yielded:
             hint = self._ocr_not_tried_hint(element_type, text_only)
-            raise blind or OpticsError(Code.E0201, message=f"Element '{element}' not found.{hint}", cause=last_error)
+            raise blind or _not_found(element, effective_element, text_only, last_error, hint)
 
     def _locate_strategies(self, text_only: bool) -> list:
         if not text_only:
             return self.locator_strategies
         return [s for s in self.locator_strategies if type(s).__name__ != "TextElementStrategy"]
 
-    def _ocr_not_tried_hint(self, element_type: str, text_only: bool) -> str:
+    def _ocr_not_tried_hint(self, element_type: str, text_only: bool) -> str | None:
         skipped = not text_only and any(
             _is_unconfigured_ocr(s) and s.supports(element_type, s.element_source) for s in self.locator_strategies
         )
-        return OCR_NOT_TRIED_MSG if skipped else ""
+        return OCR_NOT_TRIED_MSG if skipped else None
 
     def assert_presence(self, elements: list, element_type: str, timeout: int = 30, rule: str = 'any'):
         """Assert elements are present -- possibly off-screen, anywhere in the page/DOM."""
@@ -937,7 +995,11 @@ class StrategyManager:
         ]
         covered = [e for e in effective_elements if any(s.can_assert(e) for s in strategies)]
         if not covered or (rule == "all" and len(covered) < len(effective_elements)):
-            raise OpticsError(Code.E0201, message=f"No strategies found for elements: {elements} with rule '{rule}'.")
+            raise NoLocatorSource(
+                Code.E0201,
+                message=f"No configured element source can look for {_quoted(elements)}",
+                hint="Add an element source, or OCR or image detection, to config.yaml that reads this kind of locator.",
+            )
         native = [s for s in strategies if not _is_unconfigured_ocr(s)]
         ocr_skipped = not text_only and 0 < len(native) < len(strategies)
         if ocr_skipped:
@@ -961,10 +1023,7 @@ class StrategyManager:
 
         for strategy in state.strategies:
             execution_tracer.log_attempt(strategy, str(elements), "fail", error="Elements not found.")
-        hint = OCR_NOT_TRIED_MSG if ocr_skipped else ""
-        raise OpticsError(
-            Code.E0201, message=f"{elements} not found based on rule '{rule}'.{hint}", cause=state.last_exception
-        )
+        raise _assert_miss(elements, parsed, effective_elements, state, rule, ocr_skipped)
 
     def _assertion_strategies(self, element_type: str, method_name: str, text_only: bool) -> list[LocatorStrategy]:
         """Locator strategies in config order, then one vision strategy per kind: they all read the same frame."""
@@ -1097,7 +1156,7 @@ class StrategyManager:
         if blind is not None:
             raise blind
         internal_logger.debug("No screenshot captured.")
-        raise OpticsError(Code.E0303, message="No screenshot captured using available strategies.", cause=last_error)
+        raise OpticsError(Code.E0303, message="Could not take a screenshot", cause=last_error)
 
     def capture_screenshot_bytes(self) -> bytes:
         """Return the current screen as encoded PNG bytes.
@@ -1125,7 +1184,7 @@ class StrategyManager:
         if last_error is not None and _is_blind(last_error):
             raise last_error
         raise OpticsError(
-            Code.E0303, message="No screenshot bytes captured using available strategies.", cause=last_error
+            Code.E0303, message="Could not take a screenshot", cause=last_error
         )
 
     def capture_pagesource(self) -> Optional[Tuple[str, str]]:
@@ -1144,7 +1203,7 @@ class StrategyManager:
                 raise_if_session_dead(e)
                 last_error = e
         internal_logger.debug("No pagesource captured.")
-        raise OpticsError(Code.E0403, message="No pagesource captured using available strategies.", cause=last_error)
+        raise OpticsError(Code.E0403, message="Could not read the page source", cause=last_error)
 
     @staticmethod
     def _can_strategy_get_interactive_elements(strategy: "PagesourceStrategy") -> bool:
@@ -1221,5 +1280,5 @@ class StrategyManager:
             return elements
         internal_logger.debug("No interactive elements retrieved.")
         raise OpticsError(
-            Code.E0202, message="No interactive elements retrieved using available strategies.", cause=last_error
+            Code.E0202, message="Could not list the elements on the screen", cause=last_error
         )

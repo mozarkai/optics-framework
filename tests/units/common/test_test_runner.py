@@ -2,6 +2,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
+from rich.console import Console
 
 from optics_framework.common import test_context
 from optics_framework.common.error import OpticsError, Code
@@ -178,7 +179,7 @@ class TestModuleStepResolution:
         ok = await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
         assert ok is False
         assert module_result.status == "FAIL"
-        assert module_result.reason == f"E0402: Unknown keyword or module: '{step}'"
+        assert module_result.reason == f"'{step}' is not a keyword or a module."
 
     async def test_unknown_step_fails_batch(self):
         runner = _make_runner(keyword_map={"known": lambda: None})
@@ -187,59 +188,40 @@ class TestModuleStepResolution:
         ok = await runner._process_module(_mod_node(name=step), tc_result, {})
         assert ok is False
         assert module_result.status == "FAIL"
-        assert module_result.reason == f"E0402: Unknown keyword or module: '{step}'"
+        assert module_result.reason == f"'{step}' is not a keyword or a module."
 
 
-class TestFailureDetailsSection:
+class TestFailuresPanel:
     @staticmethod
-    def _printer():
-        return TreeResultPrinter(TerminalWidthProvider())
+    def _rendered(test_state):
+        printer = TreeResultPrinter(TerminalWidthProvider())
+        printer.test_state = test_state
+        console = Console(record=True, width=200)
+        console.print(printer._render_tree())
+        return console.export_text()
 
-    @staticmethod
-    def _failed_state():
+    def test_shows_where_each_step_failed_with_its_reason_and_hint(self):
         keyword = KeywordResult(
-            id="k1", name="Press Element", resolved_name="Press Element (btn)",
-            elapsed="0.10s", status="FAIL",
-            reason="Keyword 'Press Element' failed: boom",
+            id="k1", name="Press Element", resolved_name="Press Element (btn)", elapsed="0.10s", status="FAIL",
+            reason="login_button is not on the screen.", hint="Check that the app shows the screen you expect.",
         )
-        module = ModuleResult(
-            name="Open Example Pag", elapsed="0.10s", status="FAIL",
-            reason="Unknown keyword or module: 'Open Example Pag'",
-        )
-        test_case = _TestCaseResult(
-            id="t1", name="TC Broken", elapsed="0.20s", status="FAIL",
-            modules=[module],
-        )
-        return keyword, test_case
+        module = ModuleResult(name="Login", elapsed="0.10s", status="FAIL", keywords=[keyword])
+        passing = ModuleResult(name="Launch App", elapsed="0.10s", status="PASS")
+        out = self._rendered({
+            "TC OK": _TestCaseResult(id="t0", name="TC OK", elapsed="0.10s", status="PASS", modules=[passing]),
+            "TC Broken": _TestCaseResult(id="t1", name="TC Broken", elapsed="0.20s", status="FAIL", modules=[module]),
+        })
 
-    def test_panel_only_rendered_when_failures_exist(self):
-        passing = ModuleResult(
-            name="Launch App", elapsed="0.10s", status="PASS",
-            keywords=[KeywordResult(
-                id="k1", name="Launch App", resolved_name="Launch App",
-                elapsed="0.10s", status="PASS", reason="",
-            )],
-        )
-        passed_tc = _TestCaseResult(
-            id="t1", name="TC OK", elapsed="0.10s", status="PASS",
-            modules=[passing],
-        )
+        assert "Failures" in out
+        assert "TC Broken › Login › Press Element (btn)" in out
+        assert "login_button is not on the screen." in out
+        assert "Check that the app shows the screen you expect." in out
+        assert "TC OK ›" not in out
 
-        clean_printer = self._printer()
-        clean_printer.test_state = {"TC OK": passed_tc}
-        assert all(
-            getattr(r, "title", None) != "Failure details"
-            for r in clean_printer._render_tree().renderables
-        )
-        assert clean_printer._failure_detail_lines() == []
-
-        keyword, failed_tc = self._failed_state()
-        failed_tc.modules[0].keywords = [keyword]
-        failing_printer = self._printer()
-        failing_printer.test_state = {"TC Broken": failed_tc}
-        group = failing_printer._render_tree()
-        titles = [getattr(r, "title", None) for r in group.renderables]
-        assert "Failure details" in titles
+    def test_a_passing_run_has_no_failures_panel(self):
+        passing = ModuleResult(name="Launch App", elapsed="0.10s", status="PASS")
+        out = self._rendered({"TC OK": _TestCaseResult(id="t0", name="TC OK", elapsed="0.10s", status="PASS", modules=[passing])})
+        assert "Failures" not in out
 
 
 class TestPopupEvents:

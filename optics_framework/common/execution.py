@@ -15,7 +15,7 @@ from optics_framework.common.runner.event_stream import (
 from optics_framework.common.runner.test_runnner import TestRunner, PytestRunner, Runner, KeywordRunner, heal_extra, pop_heal
 from optics_framework.common.logging_config import LoggerContext, internal_logger
 from optics_framework.common.models import TestCaseNode
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common.utils import _is_list_type
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
@@ -201,7 +201,7 @@ class KeywordExecutor(Executor):
                 ))
                 if isinstance(e, OpticsError):
                     raise
-                raise OpticsError(Code.E0401, message=f"Keyword execution failed: {str(e)}") from e
+                raise OpticsError(Code.E0401, message=f"Keyword execution failed: {plain(e)}") from e
             extra = {"session_id": session.session_id}
             if heal_info:
                 extra.update(heal_extra(heal_info, heal_info.get("suggested_steps", [])))
@@ -347,7 +347,7 @@ class ExecutionEngine:
                     f"Failed to create keyword executor: {str(e)}",
                 )
             )
-            raise OpticsError(Code.E0401, message=f"Failed to create keyword executor: {str(e)}") from e
+            raise OpticsError(Code.E0401, message=f"Failed to create keyword executor: {plain(e)}") from e
 
     async def _run_executor(
         self,
@@ -366,7 +366,7 @@ class ExecutionEngine:
             )
             if isinstance(e, OpticsError):
                 raise
-            raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
+            raise OpticsError(Code.E0701, message=f"Execution failed: {plain(e)}") from e
 
     async def _drain_events_and_shutdown(self, event_manager: EventManager) -> None:
         """Wait for event queue to drain (with timeout), then shutdown."""
@@ -422,7 +422,7 @@ class ExecutionEngine:
                 internal_logger.error("Execution error in session %s: %s", params.session_id, e)
                 if isinstance(e, OpticsError):
                     raise
-                raise OpticsError(Code.E0701, message=f"Execution failed: {str(e)}") from e
+                raise OpticsError(Code.E0701, message=f"Execution failed: {plain(e)}") from e
             finally:
                 if hasattr(runner, "result_printer") and runner.result_printer:
                     internal_logger.debug("Stopping result printer live display")

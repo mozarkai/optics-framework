@@ -16,7 +16,7 @@ from playwright.async_api import (
 )
 from optics_framework.common.config_handler import env_names, expand_env
 from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.async_utils import run_async
@@ -876,7 +876,7 @@ class Playwright(DriverInterface):
             return result
         except Exception as e:
             internal_logger.debug(f"[Playwright] Failed to execute script: {e}")
-            raise OpticsError(Code.E0401, message=f"Failed to execute script: {e}", cause=e) from e
+            raise OpticsError(Code.E0401, message=f"Failed to execute script: {plain(e)}", cause=e) from e
 
     async def _evaluate(self, script: str, args: tuple) -> Any:
         """Run a Playwright expression or function, or a WebDriver-style body that uses ``return`` or ``arguments``."""

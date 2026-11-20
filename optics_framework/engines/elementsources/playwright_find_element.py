@@ -2,7 +2,7 @@ import time
 from typing import Optional, Any, List, Tuple
 
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import ElementNotFound, OpticsError, Code, plain
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 from optics_framework.engines.drivers import playwright_locator
@@ -102,11 +102,7 @@ class PlaywrightFindElement(ElementSourceInterface):
             )
         except Exception as e:
             internal_logger.error(f"Error locating element: {element}", exc_info=True)
-            raise OpticsError(
-                Code.E0201,
-                message=f"Error locating element: {element}",
-                cause=e,
-            ) from e
+            raise ElementNotFound(element, cause=e) from e
 
     def count(self, element: str) -> Optional[int]:
         self._require_page()
@@ -184,7 +180,7 @@ class PlaywrightFindElement(ElementSourceInterface):
                 found = [check(self.driver, element, exact=exact) for element in elements]
             except Exception as e:
                 raise OpticsError(
-                    Code.E0401, message=f"Error during element assertion: {e}"
+                    Code.E0401, message=f"Error during element assertion: {plain(e)}"
                 ) from e
             done = any(found) if rule == "any" else all(found)
             if done:

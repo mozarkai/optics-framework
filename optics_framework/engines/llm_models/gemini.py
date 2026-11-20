@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 
 from optics_framework.common.llm_interface import LLMInterface, image_mime_type, missing_extra_error, request_timeout_s
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common.google_credentials import service_account_credentials
 
 # The google-genai SDK is an optional extra (``optics-framework[gemini]``). Import is guarded
@@ -106,7 +106,7 @@ class GeminiLLM(LLMInterface):
             )
         except Exception as exc:  # noqa: BLE001 - normalize all SDK/transport errors
             raise OpticsError(
-                Code.E0801, message=f"Gemini request failed: {exc}"
+                Code.E0801, message=f"Gemini request failed: {plain(exc)}"
             ) from exc
         usage = getattr(response, "usage_metadata", None)
         if usage is not None:

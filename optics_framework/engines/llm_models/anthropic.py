@@ -4,7 +4,7 @@ from typing import Any
 
 from optics_framework.common.llm_interface import LLMInterface, api_key, image_mime_type, missing_extra_error, request_timeout_s
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, plain
 
 try:
     import anthropic as anthropic_sdk
@@ -93,7 +93,7 @@ class AnthropicLLM(LLMInterface):
         try:
             response = self.client.messages.create(**request)
         except Exception as exc:  # noqa: BLE001 - normalize all SDK/transport errors
-            raise OpticsError(Code.E0801, message=f"Anthropic request failed: {exc}") from exc
+            raise OpticsError(Code.E0801, message=f"Anthropic request failed: {plain(exc)}") from exc
 
         internal_logger.debug(
             "Anthropic usage (%s): input=%s cache_read=%s output=%s",

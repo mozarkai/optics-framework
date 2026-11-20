@@ -1,6 +1,7 @@
 import pytest
 from lxml import etree
 
+from optics_framework.common.error import ElementNotFound
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 
 
@@ -33,7 +34,7 @@ class TestGetLocatorAndStrategyUsingIndex:
     def test_fuzzy_candidate_rejected_when_strict(self):
         helper = _helper(ANDROID_TREE)
 
-        with pytest.raises(IndexError):
+        with pytest.raises(ElementNotFound):
             helper.get_locator_and_strategy_using_index("Buy 102 devices", 0, strict=True)
 
 

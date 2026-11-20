@@ -318,16 +318,17 @@ class JUnitEventHandler(EventSubscriber):
     def _update_testcase_status(self, testcase: ET.Element, event: Event, testsuite: ET.Element) -> None:
         testcase.set("status", event.status.value)
         code = {"code": event.code} if event.code else {}
+        body = "\n".join(part for part in (event.message, event.extra.get("hint")) if part)
         if event.status == EventStatus.FAIL:
             failure = ET.SubElement(
                 testcase, "failure", message=event.message, type="Failure", **code)
-            failure.text = event.message
+            failure.text = body
             testsuite.set("failures", str(
                 int(testsuite.get("failures", "0")) + 1))
         elif event.status == EventStatus.ERROR:
             error = ET.SubElement(
                 testcase, "error", message=event.message, type="Error", **code)
-            error.text = event.message
+            error.text = body
             testsuite.set("errors", str(int(testsuite.get("errors", "0")) + 1))
         elif event.status == EventStatus.SKIPPED:
             ET.SubElement(testcase, "skipped")

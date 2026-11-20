@@ -20,7 +20,7 @@ from optics_framework.common.logging_config import (
     SENSITIVE_PREFIX, internal_logger, execution_logger, register_secret, holding_logs_for_secret, mask_secrets,
     register_marked_secret,
 )
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, undefined_element
 from optics_framework.common.models import ElementData
 from optics_framework.common.session_liveness import raise_if_session_dead
 
@@ -117,9 +117,9 @@ def resolve_scalar_param(session: Any, param: str) -> str:
         raise OpticsError(Code.E0702, message=f"Cannot resolve '{param}': no element data in session.")
     value = elements.get_element(var_name)
     if value is None:
-        raise OpticsError(Code.E0201, message=f"Variable '{param}' not found in session elements.")
+        raise undefined_element(var_name)
     if not value:
-        raise OpticsError(Code.E0201, message=f"Variable '{param}' is an empty list.")
+        raise OpticsError(Code.E0201, message=f"{param} has no value in the project's elements")
     return str(value[0])
 
 
@@ -427,6 +427,20 @@ def web_xpath(xpath: str) -> str | None:
     """The branches of ``xpath`` a web page's DOM can answer, or ``None`` when every branch is native."""
     web = [branch.strip() for branch in _union_branches(xpath) if not is_native_xpath(branch)]
     return " | ".join(web) or None
+
+
+def xpath_problem(xpath: str) -> Optional[str]:
+    """Why ``xpath`` is not valid XPath 1.0, or None when it is."""
+    from lxml import etree
+
+    xpath = xpath.strip()
+    if xpath.lower().startswith(XPATH_PREFIX):
+        xpath = xpath[len(XPATH_PREFIX):]
+    try:
+        etree.XPath(xpath)
+    except etree.XPathSyntaxError as e:
+        return str(e)
+    return None
 
 
 def resolve_locator(element: str) -> str:
