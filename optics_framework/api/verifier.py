@@ -7,7 +7,7 @@ from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.popup_guard import STOPS as POPUP_STOPS
-from optics_framework.common.strategies import LocateResult, StrategyManager
+from optics_framework.common.strategies import LocateResult, StrategyManager, checked_rule
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.session_liveness import raise_if_session_dead
 
@@ -61,8 +61,9 @@ class Verifier:
         """
         internal_logger.debug(f"Validating element: {element}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
+        seconds, rule = int(timeout), checked_rule(rule)
         self._popup_step("validate_element", element, lambda: self._assert_common(
-            element, timeout, rule, event_name, True, method_name="assert_presence"))
+            element, seconds, rule, event_name, True, method_name="assert_presence"))
 
     def is_element(
         self,
@@ -96,9 +97,10 @@ class Verifier:
             self.event_sdk.capture_event(event_name)
 
     def _check_visibility(self, element: str, state: str, timeout: int) -> None:
+        seconds = int(timeout)
         try:
             present = self._popup_step("is_element", element, lambda: self._assert_common(
-                element, str(timeout), "any", None, False, method_name="assert_presence"))
+                element, seconds, "any", None, False, method_name="assert_presence"))
         except OpticsError as e:
             if e.code in _POPUP_ENDS:
                 raise
@@ -151,8 +153,8 @@ class Verifier:
         :param timeout: The time to wait for the text in seconds.
         :param event_name: The name of the event associated with the check, if any.
         """
-        expected = str(expected).strip()
-        self._popup_step("assert_text", element, lambda: self._wait_for_text(element, expected, float(timeout)))
+        expected, seconds = str(expected).strip(), float(timeout)
+        self._popup_step("assert_text", element, lambda: self._wait_for_text(element, expected, seconds))
         if event_name:
             self.event_sdk.capture_event(event_name)
 
@@ -240,8 +242,9 @@ class Verifier:
             this as text, and ``False`` is read case-insensitively.
         :return: True if the rule is satisfied, False otherwise.
         """
+        seconds, rule = int(timeout_str), checked_rule(rule)
         return self._popup_step("assert_presence", elements, lambda: self._assert_common(
-            elements, timeout_str, rule, event_name, fail, method_name="assert_presence"))
+            elements, seconds, rule, event_name, fail, method_name="assert_presence"))
 
     def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
         """
@@ -257,15 +260,14 @@ class Verifier:
             this as text, and ``False`` is read case-insensitively.
         :return: True if the rule is satisfied, False otherwise.
         """
+        seconds, rule = int(timeout_str), checked_rule(rule)
         return self._popup_step("assert_visibility", elements, lambda: self._assert_common(
-            elements, timeout_str, rule, event_name, fail, method_name="assert_visibility"))
+            elements, seconds, rule, event_name, fail, method_name="assert_visibility"))
 
     def _assert_common(
-        self, elements: str, timeout_str: str, rule: str,
+        self, elements: str, timeout: int, rule: str,
         event_name: Optional[str], fail: Union[bool, str], method_name: str,
     ) -> bool:
-        rule = rule.lower()
-        timeout = int(timeout_str)
         fail = str(fail).strip().lower() != "false"
         elements_list = elements.split('|')
 
@@ -351,8 +353,9 @@ class Verifier:
         internal_logger.debug(f"Validating screen for elements: {elements}")
         internal_logger.debug(f"Timeout: {timeout} and Rule: {rule}")
         try:
+            seconds, rule = int(timeout), checked_rule(rule)
             self._popup_step("validate_screen", elements, lambda: self._assert_common(
-                elements, timeout, rule, event_name, False, method_name="assert_presence"))
+                elements, seconds, rule, event_name, False, method_name="assert_presence"))
             return True
         except OpticsError as e:
             if e.code in _POPUP_ENDS:
