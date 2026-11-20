@@ -23,7 +23,7 @@ from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.config_handler import (
     ConfigHandler,
     DependencyConfig,
-    Config,
+    config_from,
     load_project_yaml,
     parse_yaml,
 )
@@ -247,7 +247,7 @@ class Optics:
             text_detection,
             execution_output_path_param,
         )
-        config_obj = Config(**{k: v for k, v in config_data.items() if v is not None})
+        config_obj = config_from({k: v for k, v in config_data.items() if v is not None})
         self.config_handler = ConfigHandler(config_obj)
         self.config = config_obj
         self._initialize_session_and_keywords()

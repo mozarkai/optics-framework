@@ -807,7 +807,7 @@ def generate_test_file(
     # Config is always single YAML file
     config_reader = YAMLDataReader()
     config = config_reader.read_config(all_files["config"][0])
-    rules = merge_project_popup_rules(parse_popup_rules(config.get("popup_rules") or [], "popup_rules"), folder_path)
+    rules = merge_project_popup_rules(parse_popup_rules(config.get("popup_rules") or []), folder_path)
     if rules:
         config["popup_rules"] = [rule.model_dump(mode="json") for rule in rules]
 

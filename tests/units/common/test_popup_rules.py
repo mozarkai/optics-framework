@@ -62,3 +62,15 @@ def test_add_popup_rules_merges_onto_the_session_config():
     config = Config(popup_rules=[rule_dict("A")])
     Optics.add_popup_rules(_optics(config), [rule_dict("B", max_per_step=5), PopupRule(**rule_dict("A", max_per_step=1))])
     assert [(r.name, r.max_per_step) for r in config.popup_rules] == [("A", 1), ("B", 5)]
+
+
+def test_a_bad_rule_in_the_setup_config_names_the_rule_field_and_value():
+    with pytest.raises(OpticsError) as caught:
+        Optics().setup(config={
+            "driver_sources": [{"appium": {"enabled": True}}],
+            "elements_sources": [{"appium_find_element": {"enabled": True}}],
+            "popup_rules": [rule_dict(action={"type": "swipe", "target": "x"})],
+        })
+    assert caught.value.code == Code.E0501
+    assert "popup_rules['Rate Us'].action.type" in caught.value.message
+    assert "'swipe'" in caught.value.message

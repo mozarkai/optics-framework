@@ -13,7 +13,7 @@ import yaml
 from pydantic import BaseModel, field_validator
 from pathlib import Path
 from optics_framework.api import ActionKeyword, AppManagement, Verifier
-from optics_framework.common.config_handler import Config, DependencyConfig, load_project_yaml, resolve_config_file
+from optics_framework.common.config_handler import Config, DependencyConfig, config_from, load_project_yaml, resolve_config_file
 from optics_framework.common.logging_config import console_logs_to_stderr, internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
@@ -186,7 +186,7 @@ def _try_load_config_from_yaml(file_path: str, current_config: Config | None, fo
 
         if _is_config_file(yaml_data):
             yaml_data = resolve_config_file(yaml_data, folder_path)
-            return Config(**yaml_data)
+            return config_from(yaml_data)
 
         return current_config
     except OpticsError as e:

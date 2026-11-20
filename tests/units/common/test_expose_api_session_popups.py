@@ -40,6 +40,13 @@ def test_a_rule_list_that_cannot_be_read_stops_the_start(monkeypatch):
     assert "popup_rules" in str(caught.value.detail)
 
 
+def test_an_unknown_permission_name_stops_the_start_as_a_client_error(monkeypatch):
+    with pytest.raises(HTTPException) as caught:
+        _start(monkeypatch, permissions={"telepathy": "allow"})
+    assert caught.value.status_code == 400
+    assert "Unknown permission 'telepathy'" in str(caught.value.detail)
+
+
 def _running(monkeypatch, session):
     monkeypatch.setattr(expose_api.session_manager, "get_session", lambda session_id: session)
 

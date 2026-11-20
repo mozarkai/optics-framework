@@ -31,7 +31,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 import yaml
 
 from optics_framework.common import fallback, keyword_outcome, utils
-from optics_framework.common.config_handler import Config, DependencyConfig, load_project_yaml, resolve_config_file
+from optics_framework.common.config_handler import Config, DependencyConfig, config_from, load_project_yaml, resolve_config_file
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.agent_core import (
     TYPED_VALUE_PARAMS,
@@ -230,9 +230,9 @@ def _config_from_yaml(path: str, folder_path: str) -> Optional[Config]:
         return None
     data = resolve_config_file(data, folder_path)
     try:
-        return Config(**data)
-    except Exception as exc:  # config-like file but invalid -> surface, don't mask
-        raise OpticsError(Code.E0501, message=f"Invalid config in {path}: {exc}") from exc
+        return config_from(data)
+    except OpticsError as exc:
+        raise OpticsError(exc.code, message=f"Invalid config in {path}: {exc.message}") from exc
 
 
 def _load_partial_config(folder_path: str) -> Optional[Config]:
