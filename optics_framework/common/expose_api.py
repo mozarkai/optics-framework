@@ -593,7 +593,7 @@ async def create_session(config: SessionConfig):
             log_level=LOG_LEVEL_DEBUG,
             save_captures=False,  # do not save screenshots or pagesource when using `optics serve`
             strict_element_match=bool(config.strict_element_match),
-            popup_rules=parse_popup_rules(config.popup_rules, "popup_rules"),
+            popup_rules=parse_popup_rules(config.popup_rules),
             permissions=config.permissions,
         )
         templates = (
@@ -1061,7 +1061,7 @@ async def replace_popup_rules(session_id: str, body: PopupRulesUpdate):
     if not session:
         raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
     try:
-        session.config.popup_rules = parse_popup_rules(body.popup_rules, "popup_rules")
+        session.config.popup_rules = parse_popup_rules(body.popup_rules)
     except OpticsError as e:
         raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
     return {"popup_rules": len(session.config.popup_rules)}

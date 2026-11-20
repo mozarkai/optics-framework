@@ -47,6 +47,17 @@ class TestConfigErrorSurfacing:
         cfg = live_mod._compose_config(d)
         assert live_mod._enabled_drivers(cfg) == ["playwright"]
 
+    def test_a_bad_popup_rule_names_the_rule_field_and_value(self):
+        d = _project(_PLAYWRIGHT + """
+popup_rules:
+  - {name: Rate Us, detect: {text_contains: [rate us]}, action: {type: swipe, target: Later}}
+""")
+        with pytest.raises(OpticsError) as exc:
+            live_mod._compose_config(d)
+        assert exc.value.code == Code.E0501
+        assert "popup_rules['Rate Us'].action.type" in exc.value.message
+        assert "'swipe'" in exc.value.message
+
 
 def _shell(driver: str, caps: dict) -> LiveController:
     """A LiveController shell with just enough state for the driver-type helpers."""

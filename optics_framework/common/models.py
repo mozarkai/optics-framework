@@ -2,7 +2,7 @@ from uuid import uuid4
 from enum import Enum
 from typing import Optional, Dict, List, Callable, Any, Literal
 from lxml import etree  # type: ignore[import-untyped]
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 from optics_framework.common.logging_config import internal_logger, register_marked_secret
 from optics_framework.common.error import OpticsError, Code, plain, undefined_element
 
@@ -395,18 +395,44 @@ class PopupRule(BaseModel):
         return self
 
 
-def parse_popup_rules(raw: Any, source: str = "popup rules") -> List[PopupRule]:
+def invalid_fields(error: ValidationError, data: Any, root: str = "") -> str:
+    """Each problem in ``error`` as ``path: reason (got value)``, naming a list item by its ``name`` when it has one."""
+    return "; ".join(_invalid_field(problem, data, root) for problem in error.errors())
+
+
+def _child(node: Any, key: Any) -> Any:
+    if isinstance(node, dict):
+        return node.get(key)
+    if isinstance(node, list) and isinstance(key, int) and key < len(node):
+        return node[key]
+    return None
+
+
+def _invalid_field(problem: Any, data: Any, path: str) -> str:
+    node = data
+    for key in problem["loc"]:
+        node = _child(node, key)
+        name = node.get("name") if isinstance(key, int) and isinstance(node, dict) else None
+        path += f"[{name!r}]" if isinstance(name, str) else f".{key}" if path else str(key)
+    reason = problem["msg"].removeprefix("Value error, ")
+    value = problem.get("input")
+    shown = problem["type"] != "missing" and isinstance(value, (str, int, float, bool))
+    return f"{path}: {reason} (got {value!r})" if shown else f"{path}: {reason}"
+
+
+_RULE_LIST = TypeAdapter(List[PopupRule])
+
+
+def parse_popup_rules(raw: Any, source: str = "") -> List[PopupRule]:
     """Rules from a list of dicts or ``PopupRule``; a bad list raises E0501 rather than quietly handling no popups."""
+    prefix = f"{source}: " if source else ""
     if not isinstance(raw, list):
-        raise OpticsError(Code.E0501, message=f"{source}: expected a list of rules")
-    rules: List[PopupRule] = []
-    for position, item in enumerate(raw, 1):
-        try:
-            rules.append(item if isinstance(item, PopupRule) else PopupRule.model_validate(item))
-        except ValidationError as e:
-            problem = "; ".join(f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors())
-            raise OpticsError(Code.E0501, message=f"{source}: rule {position} is invalid ({problem})") from e
-    require_unique_names(rules, source)
+        raise OpticsError(Code.E0501, message=f"{prefix}popup_rules: expected a list of rules")
+    try:
+        rules = _RULE_LIST.validate_python(raw)
+    except ValidationError as e:
+        raise OpticsError(Code.E0501, message=prefix + invalid_fields(e, raw, "popup_rules")) from e
+    require_unique_names(rules, source or "popup_rules")
     return rules
 
 

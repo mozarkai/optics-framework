@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from optics_framework.common.config_handler import Config, DependencyConfig
 from optics_framework.helper import execute as execute_module
@@ -45,6 +47,48 @@ class TestNoEnabledDriverGate:
             "Compute Total,Evaluate,total,1 + 1\n"
         )
         assert execute_module.run_project(str(tmp_path), use_printer=False) is True
+
+
+_APPIUM_CONFIG = """\
+driver_sources:
+  - appium:
+      enabled: true
+      url: http://127.0.0.1:1
+      capabilities:
+        platformName: Android
+elements_sources:
+  - appium_find_element:
+      enabled: true
+      capabilities: {}
+"""
+_RULE = {"name": "Rate Us", "detect": {"text_contains": ["rate us"]}, "action": {"type": "tap", "target": "Later"}}
+_SWIPE = {**_RULE, "action": {"type": "swipe", "target": "Later"}}
+
+
+class TestInvalidPopupSettingsStopTheRunBeforeAnySession:
+
+    @pytest.mark.parametrize("config, rules_file, expected", [
+        ({"popup_rules": [_SWIPE]}, None, ["popup_rules['Rate Us'].action.type", "'swipe'"]),
+        ({"popup_rules": [{k: v for k, v in _RULE.items() if k != "detect"}]}, None,
+         ["popup_rules['Rate Us'].detect", "Field required"]),
+        ({"popup_rules": [{**_RULE, "check": "sometimes"}]}, None, ["popup_rules['Rate Us'].check", "'sometimes'"]),
+        ({"permissions": {"camera": "yes_please"}}, None, ["permissions.camera", "'yes_please'"]),
+        ({"permissions": {"telepathy": "allow"}}, None, ["Unknown permission 'telepathy'"]),
+        ({}, [_SWIPE], ["popup_rules.json", "popup_rules['Rate Us'].action.type", "'swipe'"]),
+    ], ids=["unknown action", "missing detect", "wrong check", "permission value", "permission name", "rules file"])
+    @pytest.mark.parametrize("entry", [execute_module.run_project, execute_module.dryrun_main], ids=["execute", "dry_run"])
+    def test_the_error_names_the_bad_field_and_value(self, tmp_path, monkeypatch, capsys, entry, config, rules_file, expected):
+        monkeypatch.setenv("COLUMNS", "400")
+        _make_project(tmp_path, _APPIUM_CONFIG + (yaml.safe_dump(config) if config else ""))
+        if rules_file is not None:
+            (tmp_path / "popup_rules.json").write_text(json.dumps(rules_file))
+        with pytest.raises(SystemExit) as stopped:
+            entry(str(tmp_path), use_printer=False)
+        shown = capsys.readouterr().err
+        assert stopped.value.code == 1
+        assert "Cannot start: E0501" in shown
+        for text in expected:
+            assert text in shown
 
 
 def _config_for(driver: str, **dep_kwargs) -> Config:

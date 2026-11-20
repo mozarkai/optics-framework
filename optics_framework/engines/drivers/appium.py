@@ -34,6 +34,7 @@ from selenium.webdriver.common.actions.wheel_input import ScrollOrigin  # type: 
 from selenium.webdriver.common.keys import Keys  # type: ignore
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.popup_screen import PopupScreen
+from optics_framework.common.permissions import android_permissions
 from optics_framework.common.logging_config import internal_logger, redact_secret_values
 from optics_framework.common import utils
 from optics_framework.common.utils import SpecialKey
@@ -103,39 +104,6 @@ _PROBE_JS = (
 )
 _PROBE_REMOVE_JS = "document.getElementById(arguments[0])?.remove();"
 _GET_CONTEXTS = "mobile: getContexts"
-# What each permission name in the session config stands for on Android; a full "android.permission.X" is taken as it is.
-# The strings are listed at https://developer.android.com/reference/android/Manifest.permission
-_ANDROID_PERMISSIONS = {
-    "camera": ("android.permission.CAMERA",),
-    "location": ("android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"),
-    "notifications": ("android.permission.POST_NOTIFICATIONS",),
-    "microphone": ("android.permission.RECORD_AUDIO",),
-    "background_location": ("android.permission.ACCESS_BACKGROUND_LOCATION",),
-    "contacts": ("android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS"),
-    "calendar": ("android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"),
-    "phone": ("android.permission.READ_PHONE_STATE", "android.permission.CALL_PHONE"),
-    "call_log": ("android.permission.READ_CALL_LOG", "android.permission.WRITE_CALL_LOG"),
-    "sms": ("android.permission.SEND_SMS", "android.permission.READ_SMS", "android.permission.RECEIVE_SMS"),
-    "storage": ("android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE"),
-    "photos": ("android.permission.READ_MEDIA_IMAGES",),
-    "videos": ("android.permission.READ_MEDIA_VIDEO",),
-    "audio": ("android.permission.READ_MEDIA_AUDIO",),
-    "bluetooth": ("android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_SCAN",
-                  "android.permission.BLUETOOTH_ADVERTISE"),
-    "nearby_wifi": ("android.permission.NEARBY_WIFI_DEVICES",),
-    "body_sensors": ("android.permission.BODY_SENSORS",),
-    "activity_recognition": ("android.permission.ACTIVITY_RECOGNITION",),
-}
-def _android_permissions(name: str) -> tuple[str, ...]:
-    if name.startswith("android.permission."):
-        return (name,)
-    try:
-        return _ANDROID_PERMISSIONS[name.lower()]
-    except KeyError:
-        raise OpticsError(
-            Code.E0501,
-            message=f"Unknown permission '{name}'. Use one of {', '.join(_ANDROID_PERMISSIONS)} or a full android.permission.* name.",
-        ) from None
 _SAFARI_VIEW_SERVICE = "com.apple.SafariViewService"
 _ONE_PAGE_ON_SCREEN = frozenset({_SAFARI_VIEW_SERVICE, "com.apple.mobilesafari"})
 # A zero-size page reports visible too: Firefox runs its translations engine in one.
@@ -585,7 +553,6 @@ class Appium(DriverInterface):
         self._cleanup_existing_driver()
         all_caps = self.capabilities.copy() if self.capabilities else {}
         self._apply_app_identifier_caps(all_caps, app_package, app_activity)
-        self._check_permission_names(all_caps)
 
         attached_sid = self._try_attach_or_clear_session_caps(all_caps, event_name=event_name)
         if attached_sid is not None:
@@ -613,12 +580,6 @@ class Appium(DriverInterface):
 
     def _is_android(self, caps: dict[str, Any]) -> bool:
         return normalize_platform(caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)) == ANDROID
-
-    def _check_permission_names(self, caps: dict[str, Any]) -> None:
-        """An unknown permission name is refused before any session exists, so a failed start leaves no driver open."""
-        if self._is_android(caps):
-            for name in self._configured_permissions():
-                _android_permissions(name)
 
     def _hold_launch_for_permissions(self, options: Any, caps: dict[str, Any]) -> Optional[tuple[str, Optional[str]]]:
         """On Android, keep the session from opening the app until its permissions are set, so no prompt can come
@@ -657,7 +618,7 @@ class Appium(DriverInterface):
         driver = self._require_driver()
         for name, decision in permissions.items():
             action = "grant" if decision == "allow" else "revoke"
-            for permission in _android_permissions(name):
+            for permission in android_permissions(name):
                 try:
                     driver.execute_script(
                         "mobile: changePermissions", {"action": action, "appPackage": package, "permissions": [permission]}

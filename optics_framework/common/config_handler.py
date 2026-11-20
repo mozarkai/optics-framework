@@ -5,11 +5,12 @@ from collections.abc import Mapping
 from typing import Any, Dict, List, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import initialize_handlers, is_secret_entry, register_config_secret
-from optics_framework.common.models import PopupRule, require_unique_names
+from optics_framework.common.models import PopupRule, invalid_fields, require_unique_names
+from optics_framework.common.permissions import Permissions
 
 _ENV_REFERENCE = re.compile(r"\$(?:\$|\{([A-Za-z_]\w*)(?::-([^}]*))?\}|([A-Za-z_]\w*))")
 _RELATIVE_PREFIXES = ("./", "../")
@@ -247,7 +248,7 @@ class Config(BaseModel):
     strict_element_match: bool = False
     nl_agent: NLAgentConfig = Field(default_factory=NLAgentConfig)
     popup_rules: List[PopupRule] = Field(default_factory=list)
-    permissions: Dict[str, Literal["allow", "deny"]] = Field(default_factory=dict)
+    permissions: Permissions = Field(default_factory=dict)
 
     @field_validator("popup_rules")
     @classmethod
@@ -305,6 +306,14 @@ class Config(BaseModel):
         Get a config attribute by key, returning default if not present.
         """
         return getattr(self, key, default)
+
+
+def config_from(data: Mapping[str, Any]) -> Config:
+    """``Config(**data)``; a value that is not valid raises E0501 naming its field and the value."""
+    try:
+        return Config(**data)
+    except ValidationError as e:
+        raise OpticsError(Code.E0501, message=invalid_fields(e, data)) from e
 
 
 def deep_merge(c1: Config, c2: Config) -> Config:
