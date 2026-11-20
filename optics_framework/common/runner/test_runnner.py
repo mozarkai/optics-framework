@@ -51,7 +51,7 @@ from optics_framework.common.events import (
     Event,
     redact_event,
 )
-from optics_framework.common.runner.data_reader import bind_params, step_arguments
+from optics_framework.common.runner.data_reader import bind_params, step_arguments, step_candidates
 from optics_framework.common.popup_guard import PopupRun, Verdict
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import fallback, utils
@@ -503,7 +503,7 @@ class TestRunner(Runner):
                 return False
 
             params, store_as = utils.split_store_as(keyword_node.params)
-            param_candidates = await self._build_param_candidates(keyword_node, params, module_node, keyword_result, start_time, test_case_result, capture_handler, utils.raw_param_indices(method))
+            param_candidates = await self._build_param_candidates(keyword_node, method, params, module_node, keyword_result, start_time, test_case_result, capture_handler)
             if param_candidates is None:
                 return False
 
@@ -559,27 +559,15 @@ class TestRunner(Runner):
         )
         self._update_status(keyword_result, "FAIL", time.time() - start_time, test_case_result.name)
 
-    async def _build_param_candidates(self, keyword_node, params, module_node, keyword_result, start_time, test_case_result, capture_handler, raw=frozenset()):
-        param_candidates = []
-        for i, param in enumerate(params):
-            var_name = None if i in raw else utils.whole_var_name(param)
-            if var_name is not None:
-                values = self.elements.get_element(var_name)
-                if not values:
-                    # Await error handler to ensure error is processed before returning
-                    await self._handle_element_not_found(
-                        keyword_node, module_node, keyword_result, start_time, test_case_result, var_name, capture_handler
-                    )
-                    return None
-                param_candidates.append(values)
-            else:
-                param_candidates.append([param])
-        test_context.name_locators(params, self.elements.get_element)
-        return param_candidates
+    async def _build_param_candidates(self, keyword_node, method, params, module_node, keyword_result, start_time, test_case_result, capture_handler):
+        try:
+            return step_candidates(method, params, self.elements)
+        except OpticsError as error:
+            await self._handle_element_not_found(keyword_node, module_node, keyword_result, start_time, test_case_result, error, capture_handler)
+            return None
 
-    async def _handle_element_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result, var_name, capture_handler):
+    async def _handle_element_not_found(self, keyword_node, module_node, keyword_result, start_time, test_case_result, error, capture_handler):
         keyword_node.state = State.COMPLETED_FAILED
-        error = undefined_element(var_name)
         reason = error.summary
         self._note_failure(reason, Code.E0201, hint=error.own_hint)
         keyword_result.reason = reason
@@ -1256,7 +1244,7 @@ class PytestRunner(Runner):
             self._handle_keyword_fail(keyword, keyword_id, module_id, keyword_not_found(keyword, self.keyword_map))
 
         params, store_as = utils.split_store_as(params)
-        param_candidates = self._build_param_candidates_pytest(params, keyword_id, keyword, module_id, utils.raw_param_indices(method))
+        param_candidates = self._build_param_candidates_pytest(method, params, keyword_id, keyword, module_id)
         try:
             return self._try_execute_with_fallback_pytest(
                 method, param_candidates, keyword, keyword_id, module_id, store_as=store_as
@@ -1314,19 +1302,12 @@ class PytestRunner(Runner):
             self.event_manager
         )
 
-    def _build_param_candidates_pytest(self, params, keyword_id, keyword, module_id, raw=frozenset()):
-        param_candidates = []
-        for i, param in enumerate(params):
-            var_name = None if i in raw else utils.whole_var_name(param)
-            if var_name is not None:
-                values = self.elements.get_element(var_name)
-                if not values:
-                    self._handle_keyword_fail(keyword, keyword_id, module_id, undefined_element(var_name))
-                param_candidates.append(values)
-            else:
-                param_candidates.append([param])
-        test_context.name_locators(params, self.elements.get_element)
-        return param_candidates
+    def _build_param_candidates_pytest(self, method, params, keyword_id, keyword, module_id):
+        try:
+            return step_candidates(method, params, self.elements)
+        except OpticsError as error:
+            failure = error
+        self._handle_keyword_fail(keyword, keyword_id, module_id, failure)
 
     def _try_execute_with_fallback_pytest(self, method, param_candidates, keyword, keyword_id, module_id, store_as=None):
         def attempt(candidate_args):
