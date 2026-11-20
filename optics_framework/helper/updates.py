@@ -88,17 +88,24 @@ def _headlines(surface: str, cached: dict[str, dict[str, str]]) -> dict[str, dic
     return {v: r for v, r in releases.items() if isinstance(r, dict) and all(isinstance(t, str) for t in r.values())}
 
 
-def refresh(surface: str, force: bool = False) -> State:
-    """The cached state, read again from PyPI when it is a day old or ``force`` is set."""
+def refresh(surface: str) -> State:
+    """The cached state, read again from PyPI when it is a day old."""
     state = _load()
-    if not force and time.time() - state.checked < _DAY_S:
+    if time.time() - state.checked < _DAY_S:
         return state
+    return lookup(surface) or state
+
+
+def lookup(surface: str) -> State | None:
+    """Read the newest release from PyPI now and cache it; None when PyPI does not answer."""
+    state = _load()
     try:
         latest = requests.get(PYPI_URL, headers={"User-Agent": user_agent(surface)}, timeout=_TIMEOUT_S).json()["info"]["version"]
     except (requests.RequestException, ValueError, KeyError, TypeError):
-        return state
+        return None
     _store(State(state.checked, str(latest), state.releases, state.seen))
-    fresh = State(time.time(), str(latest), _headlines(surface, state.releases), state.seen)
+    releases = state.releases if turned_off("DO_NOT_TRACK") else _headlines(surface, state.releases)
+    fresh = State(time.time(), str(latest), releases, state.seen)
     _store(fresh)
     return fresh
 
@@ -184,15 +191,19 @@ def _installed(name: str) -> bool:
 
 
 def upgrade() -> int:
-    """``optics upgrade``: move to the newest release the way this environment allows."""
-    state = refresh("cli", force=True) if enabled() else State()
-    if state.latest and not newer(state):
+    """``optics upgrade``: look up the newest release, even where the passive notice is off, and move to it."""
+    state = lookup("cli")
+    if state is None:
+        print("Could not look up the newest release on PyPI.")
+    elif not newer(state):
         print(f"Optics {VERSION} is the newest release.")
         return 0
-    plan = plan_upgrade(detect(), installed_spec(), state.latest)
+    latest = state.latest if state else ""
+    plan = plan_upgrade(detect(), installed_spec(), latest)
     if plan.command is None:
         print(plan.describe())
         return 1
+    print(f"Upgrading Optics {VERSION} to {latest}." if latest else "Upgrading to the newest release the installer finds.")
     if plan.note:
         print(plan.note)
     return subprocess.run(plan.command, check=False).returncode  # nosec B603
