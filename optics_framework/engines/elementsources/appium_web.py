@@ -5,7 +5,7 @@ from lxml import etree  # type: ignore
 from selenium.common.exceptions import WebDriverException
 from optics_framework.common import utils
 from optics_framework.common.elementsource_interface import ElementSourceInterface, ScreenPoint
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import Code, ElementNotFound, OpticsError
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.session_liveness import raise_if_session_dead
 from optics_framework.engines.elementsources.playwright_page_source import BOUNDS_JS, SUGGEST_LOCATORS_JS, WebDomInspector
@@ -103,6 +103,8 @@ class AppiumWeb(ElementSourceInterface, WebDomInspector):
         with self.driver.web_context([query]) as driver:
             matches = driver.find_elements(*query)
             position = index or 0
+            if not matches:
+                raise ElementNotFound(element)
             if not 0 <= position < len(matches):
                 raise OpticsError(
                     Code.E0201,

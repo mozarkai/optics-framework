@@ -1,16 +1,10 @@
-"""Structured error definitions and helpers for Optics Framework.
-
-This module provides:
-- ErrorSpec: static registry entries for known error codes.
-- OpticsError: an exception carrying structured metadata (category, code, http status, details).
-- helpers: from_code, raise_code and to_response to produce machine-readable payloads.
-
-"""
+"""Error codes, their plain-language meaning and the error type every Optics failure raises."""
 
 from __future__ import annotations
 
-
 import logging
+import re
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Dict, Optional, Any
 from pydantic import BaseModel
@@ -99,312 +93,94 @@ class Code(StrEnum):
 
 
 class ErrorSpec(BaseModel):
-    """Specification for a known error code.
-
-    Using pydantic so the spec can be serialized and validated across
-    CLI, library, and HTTP contexts without tying this module to an
-    HTTP library.
-    """
+    """A known code: its default message, category, HTTP status and the next step a person can take."""
 
     code: Code
     default_message: str
     category: Category
     default_status: int = 500
+    hint: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
-    # severity can be inferred from `code` prefix; don't store it here
 
     model_config = {
         "frozen": True,
     }
 
 
-# Registry built from the list the user provided. Keep messages short; callers may override.
+_NOT_FOUND_HINT = "Make sure that the screen shows the element when this step starts, or correct its locator."
+
+_SPECS = (
+    (Code.E0101, Category.DRIVER, 500, "The driver is not ready",
+     "Start a new session. If this error occurs again, examine the driver entry in config.yaml."),
+    (Code.E0102, Category.DRIVER, 500, "Could not start the session",
+     "Make sure that the device and its driver server are on and that you can reach them. "
+     "Run 'optics doctor' to examine the setup."),
+    (Code.E0103, Category.DRIVER, 500, "Could not end the session", None),
+    (Code.E0104, Category.DRIVER, 400, "The driver configuration is incomplete",
+     "Add the missing capabilities to the driver entry in config.yaml."),
+    (Code.E0105, Category.DRIVER, 400, "This keyword does not work on this platform",
+     "Use a different keyword on this platform."),
+    (Code.E0106, Category.DRIVER, 500, "The driver session ended",
+     "The device or the driver server stopped the session. Examine the device, then run again."),
+    (Code.W0104, Category.DRIVER, 200, "The driver configuration is incomplete", None),
+    (Code.E0201, Category.ELEMENT, 404, "The element is not on the screen", _NOT_FOUND_HINT),
+    (Code.X0201, Category.ELEMENT, 500, "The element was not found with any of its locators", _NOT_FOUND_HINT),
+    (Code.E0202, Category.ELEMENT, 400, "The element source cannot do this",
+     "Add an element source to config.yaml that can read this screen."),
+    (Code.W0203, Category.ELEMENT, 200, "The element has an unexpected format", None),
+    (Code.E0204, Category.ELEMENT, 504, "Timed out while looking for the element", _NOT_FOUND_HINT),
+    (Code.E0205, Category.ELEMENT, 400, "The element locator is not valid",
+     "Use text, an XPath, css=, id: or the file name of an image."),
+    (Code.E0206, Category.ELEMENT, 409, "Unknown popup on screen",
+     "Add a rule for this popup to popup_rules.json, or close it before this step."),
+    (Code.E0301, Category.SCREENSHOT, 400, "Screenshots are off", None),
+    (Code.W0302, Category.SCREENSHOT, 200, "Using the next camera driver", None),
+    (Code.E0303, Category.SCREENSHOT, 500, "The screenshot is empty or black",
+     "Make sure that the device screen is on and unlocked. Some apps block screenshots of secure screens."),
+    (Code.E0304, Category.SCREENSHOT, 422, "The image is too large or is not a valid image",
+     "Use a PNG or JPEG image."),
+    (Code.E0305, Category.SCREENSHOT, 503, "The camera does not see the device screen",
+     "Point the camera at the device screen, then run again."),
+    (Code.E0401, Category.KEYWORD, 500, "The action failed", None),
+    (Code.X0401, Category.KEYWORD, 500, "The action failed", None),
+    (Code.E0402, Category.KEYWORD, 404, "Keyword not found",
+     "Run 'optics list' to see the keywords."),
+    (Code.E0403, Category.KEYWORD, 400, "The keyword parameters are not valid",
+     "Run 'optics list <keyword>' to see the parameters of the keyword."),
+    (Code.W0404, Category.KEYWORD, 200, "This keyword is deprecated", None),
+    (Code.E0405, Category.KEYWORD, 500, "Action ran, but the screen does not show its result",
+     "Look at the failure screenshot to see what the screen showed after the action."),
+    (Code.E0406, Category.KEYWORD, 400, "Expression or filter refused: unsafe or too costly",
+     "Make the expression shorter or simpler."),
+    (Code.E0407, Category.KEYWORD, 409, "Popup keeps coming back", None),
+    (Code.E0408, Category.KEYWORD, 409, "Popup stopped the step", None),
+    (Code.E0409, Category.KEYWORD, 409, "Popup dismissed, the step looks for its element again", None),
+    (Code.E0501, Category.CONFIG, 400, "A required setting or file is missing",
+     "Correct config.yaml, or add the missing file."),
+    (Code.X0502, Category.CONFIG, 500, "Could not read a file", None),
+    (Code.E0503, Category.CONFIG, 400, "A setting has a value that is not valid",
+     "Correct the value in config.yaml or in the test files."),
+    (Code.W0503, Category.CONFIG, 200, "A setting has a value that is not valid; it is ignored", None),
+    (Code.E0601, Category.MODULE, 404, "Module not found",
+     "Add the module to the modules file, or correct its name."),
+    (Code.W0602, Category.MODULE, 200, "No valid instance; it is ignored", None),
+    (Code.E0603, Category.MODULE, 500, "Could not create an engine", None),
+    (Code.X0604, Category.MODULE, 500, "Could not import a module", None),
+    (Code.E0701, Category.TEST, 500, "The run failed", None),
+    (Code.E0702, Category.TEST, 404, "Test case not found", None),
+    (Code.E0703, Category.TEST, 400, "Could not resolve a parameter", None),
+    (Code.E0704, Category.TEST, 504, "The test case timed out", None),
+    (Code.W0705, Category.TEST, 200, "The test case was skipped", None),
+    (Code.E0706, Category.TEST, 500, "Run stopped before the test case finished", None),
+    (Code.E0801, Category.GENERAL, 500, "Unexpected error", None),
+    (Code.E0802, Category.GENERAL, 500, "Unhandled error", None),
+    (Code.E0901, Category.LIVE, 404, "Named element not defined in this project",
+     "Add the element to the elements file of the project."),
+)
+
 ERROR_REGISTRY: Dict[str, ErrorSpec] = {
-    # Driver issue
-    "E0101": ErrorSpec(
-        code=Code.E0101,
-        default_message="Driver not initialized",
-        category=Category.DRIVER,
-        default_status=500,
-    ),
-    "E0102": ErrorSpec(
-        code=Code.E0102,
-        default_message="Failed to start session",
-        category=Category.DRIVER,
-        default_status=500,
-    ),
-    "E0103": ErrorSpec(
-        code=Code.E0103,
-        default_message="Failed to end session",
-        category=Category.DRIVER,
-        default_status=500,
-    ),
-    "E0104": ErrorSpec(
-        code=Code.E0104,
-        default_message="Driver config incomplete",
-        category=Category.DRIVER,
-        default_status=400,
-    ),
-    "E0105": ErrorSpec(
-        code=Code.E0105,
-        default_message="Keyword not supported on this device platform",
-        category=Category.DRIVER,
-        default_status=400,
-    ),
-    "E0106": ErrorSpec(
-        code=Code.E0106,
-        default_message="Driver session is no longer active",
-        category=Category.DRIVER,
-        default_status=500,
-    ),
-    "W0104": ErrorSpec(
-        code=Code.W0104,
-        default_message="Driver config incomplete (warning)",
-        category=Category.DRIVER,
-        default_status=200,
-    ),
-    # Element location issue
-    "E0201": ErrorSpec(
-        code=Code.E0201,
-        default_message="Element not found",
-        category=Category.ELEMENT,
-        default_status=404,
-    ),
-    "X0201": ErrorSpec(
-        code=Code.X0201,
-        default_message="Element not found after all fallbacks",
-        category=Category.ELEMENT,
-        default_status=500,
-    ),
-    "E0202": ErrorSpec(
-        code=Code.E0202,
-        default_message="Unsupported operation for element source",
-        category=Category.ELEMENT,
-        default_status=400,
-    ),
-    "W0203": ErrorSpec(
-        code=Code.W0203,
-        default_message="Element format mismatch",
-        category=Category.ELEMENT,
-        default_status=200,
-    ),
-    "E0204": ErrorSpec(
-        code=Code.E0204,
-        default_message="Timeout locating element",
-        category=Category.ELEMENT,
-        default_status=504,
-    ),
-    "E0205": ErrorSpec(
-        code=Code.E0205,
-        default_message="Invalid element type",
-        category=Category.ELEMENT,
-        default_status=400,
-    ),
-    "E0206": ErrorSpec(
-        code=Code.E0206,
-        default_message="Unknown popup on screen",
-        category=Category.ELEMENT,
-        default_status=409,
-    ),
-    # Screenshot issues
-    "E0301": ErrorSpec(
-        code=Code.E0301,
-        default_message="Screenshot disabled",
-        category=Category.SCREENSHOT,
-        default_status=400,
-    ),
-    "W0302": ErrorSpec(
-        code=Code.W0302,
-        default_message="Fallback to next camera supported driver",
-        category=Category.SCREENSHOT,
-        default_status=200,
-    ),
-    "E0303": ErrorSpec(
-        code=Code.E0303,
-        default_message="Screenshot empty/black",
-        category=Category.SCREENSHOT,
-        default_status=500,
-    ),
-    "E0304": ErrorSpec(
-        code=Code.E0304,
-        default_message="Image too large to decode or not a valid image",
-        category=Category.SCREENSHOT,
-        default_status=422,
-    ),
-    "E0305": ErrorSpec(
-        code=Code.E0305,
-        default_message="The camera does not see the device screen",
-        category=Category.SCREENSHOT,
-        default_status=503,
-    ),
-    # Keyword Execution issues
-    "E0401": ErrorSpec(
-        code=Code.E0401,
-        default_message="Action failed",
-        category=Category.KEYWORD,
-        default_status=500,
-    ),
-    "X0401": ErrorSpec(
-        code=Code.X0401,
-        default_message="Action failed with exception",
-        category=Category.KEYWORD,
-        default_status=500,
-    ),
-    "E0402": ErrorSpec(
-        code=Code.E0402,
-        default_message="Keyword not found",
-        category=Category.KEYWORD,
-        default_status=404,
-    ),
-    "E0403": ErrorSpec(
-        code=Code.E0403,
-        default_message="Invalid keyword parameters",
-        category=Category.KEYWORD,
-        default_status=400,
-    ),
-    "W0404": ErrorSpec(
-        code=Code.W0404,
-        default_message="Keyword deprecated",
-        category=Category.KEYWORD,
-        default_status=200,
-    ),
-    "E0405": ErrorSpec(
-        code=Code.E0405,
-        default_message="Action ran, but the screen does not show its result",
-        category=Category.KEYWORD,
-        default_status=500,
-    ),
-    "E0406": ErrorSpec(
-        code=Code.E0406,
-        default_message="Expression or filter refused: unsafe or too costly",
-        category=Category.KEYWORD,
-        default_status=400,
-    ),
-    "E0407": ErrorSpec(
-        code=Code.E0407,
-        default_message="Popup keeps coming back",
-        category=Category.KEYWORD,
-        default_status=409,
-    ),
-    "E0408": ErrorSpec(
-        code=Code.E0408,
-        default_message="Popup stopped the step",
-        category=Category.KEYWORD,
-        default_status=409,
-    ),
-    "E0409": ErrorSpec(
-        code=Code.E0409,
-        default_message="Popup dismissed, the step looks for its element again",
-        category=Category.KEYWORD,
-        default_status=409,
-    ),
-    # Config/File issues
-    "E0501": ErrorSpec(
-        code=Code.E0501,
-        default_message="Missing required files",
-        category=Category.CONFIG,
-        default_status=400,
-    ),
-    "X0502": ErrorSpec(
-        code=Code.X0502,
-        default_message="File read exception",
-        category=Category.CONFIG,
-        default_status=500,
-    ),
-    "E0503": ErrorSpec(
-        code=Code.E0503,
-        default_message="Config parser error (important param)",
-        category=Category.CONFIG,
-        default_status=400,
-    ),
-    "W0503": ErrorSpec(
-        code=Code.W0503,
-        default_message="Config parser warning (can be ignored)",
-        category=Category.CONFIG,
-        default_status=200,
-    ),
-    # Module/Factory Issues
-    "E0601": ErrorSpec(
-        code=Code.E0601,
-        default_message="Module not found",
-        category=Category.MODULE,
-        default_status=404,
-    ),
-    "W0602": ErrorSpec(
-        code=Code.W0602,
-        default_message="No valid instances, ignoring it",
-        category=Category.MODULE,
-        default_status=200,
-    ),
-    "E0603": ErrorSpec(
-        code=Code.E0603,
-        default_message="Factory init failed",
-        category=Category.MODULE,
-        default_status=500,
-    ),
-    "X0604": ErrorSpec(
-        code=Code.X0604,
-        default_message="Import related problem",
-        category=Category.MODULE,
-        default_status=500,
-    ),
-    # Test Case Issues
-    "E0701": ErrorSpec(
-        code=Code.E0701,
-        default_message="Execution failed",
-        category=Category.TEST,
-        default_status=500,
-    ),
-    "E0702": ErrorSpec(
-        code=Code.E0702,
-        default_message="Test case not found",
-        category=Category.TEST,
-        default_status=404,
-    ),
-    "E0703": ErrorSpec(
-        code=Code.E0703,
-        default_message="Parameter resolution failed",
-        category=Category.TEST,
-        default_status=400,
-    ),
-    "E0704": ErrorSpec(
-        code=Code.E0704,
-        default_message="Test case timeout",
-        category=Category.TEST,
-        default_status=504,
-    ),
-    "W0705": ErrorSpec(
-        code=Code.W0705,
-        default_message="Test case skipped",
-        category=Category.TEST,
-        default_status=200,
-    ),
-    "E0706": ErrorSpec(
-        code=Code.E0706,
-        default_message="Run stopped before the test case finished",
-        category=Category.TEST,
-        default_status=500,
-    ),
-    # General Issues
-    "E0801": ErrorSpec(
-        code=Code.E0801,
-        default_message="Unexpected error",
-        category=Category.GENERAL,
-        default_status=500,
-    ),
-    "E0802": ErrorSpec(
-        code=Code.E0802,
-        default_message="Unhandled exception",
-        category=Category.GENERAL,
-        default_status=500,
-    ),
-    # Live (interactive session) issues
-    "E0901": ErrorSpec(
-        code=Code.E0901,
-        default_message="Named element not defined in this project",
-        category=Category.LIVE,
-        default_status=404,
-    ),
+    code: ErrorSpec(code=code, category=category, default_status=status, default_message=message, hint=hint)
+    for code, category, status, message, hint in _SPECS
 }
 
 
@@ -415,6 +191,7 @@ class ErrorPayload(BaseModel):
     code: str
     status: Optional[int] = None
     message: str
+    hint: Optional[str] = None
     details: Optional[Any] = None
     meta: Optional[Dict[str, Any]] = None
     cause: Optional[str] = None
@@ -429,9 +206,15 @@ def is_element_not_found(code: "str | Code") -> bool:
     return value.startswith("E02") or value == Code.X0201.value
 
 
+# XCUITest reports Apple NSErrors whose readable part is NSLocalizedDescription.
+_NS_DESCRIPTION = re.compile(r"NSLocalizedDescription=(.+?)(?:, [A-Za-z]+=|\}|$)")
+
+
 def _first_line(error: BaseException) -> str:
     # Driver errors append stack traces and call logs after the first line.
     text = next((line.strip() for line in str(error).splitlines() if line.strip()), "")
+    if apple := _NS_DESCRIPTION.search(text):
+        return apple.group(1)[:_CAUSE_MAX_CHARS]
     return text.removeprefix("Message: ")[:_CAUSE_MAX_CHARS]
 
 
@@ -443,16 +226,68 @@ def describe_cause(error: BaseException) -> str:
     return f"{type(error).__name__}: {line}" if line else type(error).__name__
 
 
-class OpticsError(Exception):
-    """Exception carrying structured metadata for HTTP responses and logging.
+def plain(error: BaseException) -> str:
+    """An error as a person reads it: an OpticsError's summary, else the first line of its message."""
+    if isinstance(error, OpticsError):
+        return error.summary
+    return _first_line(error) or type(error).__name__
 
-    Attributes:
-        code: short code like 'E0101'
-        message: human readable message
-        category: Category enum
-        status_code: HTTP status integer
-        details: optional dict with extra data
+
+def _chain(error: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and all(current is not seen for seen in chain):
+        chain.append(current)
+        current = current.__cause__
+    return chain
+
+
+@dataclass(frozen=True)
+class Explanation:
+    """What a person needs to know about a failure: what happened, what to do next and, for the report, why."""
+
+    summary: str
+    hint: str | None
+    code: str | None
+    detail: tuple[str, ...]
+
+
+def explain(error: BaseException) -> Explanation:
+    """The summary, the next step and the technical chain of ``error``, in one place for every surface."""
+    chain = _chain(error)
+    optics = [e for e in chain if isinstance(e, OpticsError)]
+    hints = list(dict.fromkeys(e.own_hint for e in reversed(optics) if e.own_hint))
+    general = next((h for h in (ERROR_REGISTRY[e.code].hint for e in reversed(optics) if e.code in ERROR_REGISTRY) if h), None)
+    if general and not hints:
+        hints.append(general)
+    return Explanation(
+        summary=plain(error),
+        hint=" ".join(hints) or None,
+        code=str(optics[0].code) if optics else None,
+        detail=_detail(chain),
+    )
+
+
+def _detail(chain: list[BaseException]) -> tuple[str, ...]:
+    """One line per layer of the chain that says something the layer above it did not."""
+    lines: list[str] = []
+    above = ""
+    for error in chain:
+        text = error.message if isinstance(error, OpticsError) else describe_cause(error)
+        if text and text not in above:
+            lines.append(f"{error.code}: {text}" if isinstance(error, OpticsError) else text)
+        above = text
+    return tuple(lines)
+
+
+class OpticsError(Exception):
+    """An Optics failure: a code, one plain sentence for this layer, an optional next step and its cause.
+
+    A layer that wraps another error names only what it adds; ``summary`` joins the layers, so a
+    wrapper never repeats the code or the message of the error it wraps.
     """
+
+    show_cause = True
 
     def __init__(
         self,
@@ -461,10 +296,10 @@ class OpticsError(Exception):
         details: Optional[Any] = None,
         cause: Optional[BaseException] = None,
         meta: Optional[Dict[str, Any]] = None,
+        hint: Optional[str] = None,
     ):
         spec = ERROR_REGISTRY.get(code)
         if spec is None:
-            # Unknown code: create a fallback spec but don't mutate registry
             spec = ErrorSpec(
                 code=Code(code) if isinstance(code, str) else code,
                 default_message=message or "Unknown error",
@@ -476,34 +311,42 @@ class OpticsError(Exception):
         self.code = spec.code
         self.category = spec.category
         self.status_code = int(spec.default_status)
-        # severity can be inferred by the first char of the code (E/W/X)
-        # allow callers to override the default message
         self.message = message or spec.default_message
+        self.own_hint = hint
         self.details = details
         self.__cause__ = cause
         self.meta = meta or getattr(spec, "meta", None)
         super().__init__(f"{self.code}: {self.message}")
 
     @property
-    def cause_text(self) -> str | None:
-        """The root of the cause chain as one line, unless the message already carries it.
-
-        Intermediate OpticsErrors mostly restate the outer message ("not found"), so only
-        the innermost error, the one that says why, is shown.
-        """
+    def summary(self) -> str:
+        """This error and the causes that add to it, as one or more plain sentences without codes."""
         cause = self.__cause__
-        if cause is None:
+        if cause is None or not self.show_cause:
+            return self.message
+        inner = plain(cause)
+        if not inner or inner in self.message:
+            return self.message
+        if self.message in inner:
+            return inner
+        return f"{self.message}: {inner}"
+
+    @property
+    def hint(self) -> str | None:
+        return explain(self).hint
+
+    @property
+    def cause_text(self) -> str | None:
+        """The root of the cause chain as one line, unless the summary already says it."""
+        if self.__cause__ is None or not self.show_cause:
             return None
-        while cause.__cause__ is not None:
-            cause = cause.__cause__
-        cause_message = cause.message if isinstance(cause, OpticsError) else _first_line(cause)
-        if cause_message and cause_message in self.message:
+        root = _chain(self)[-1]
+        if plain(root) in self.summary:
             return None
-        return describe_cause(cause)
+        return describe_cause(root)
 
     def __str__(self) -> str:
-        cause = self.cause_text
-        return f"{self.code}: {self.message} (cause: {cause})" if cause else f"{self.code}: {self.message}"
+        return f"{self.code}: {self.summary}"
 
     def log(self, logger=None, level=None, extra=None, use_rich: bool | None = None):
         """
@@ -532,9 +375,7 @@ class OpticsError(Exception):
         return logging.ERROR
 
     def _build_log_message(self, extra):
-        log_msg = f"[{self.code}] {self.message} (category: {self.category}, status: {self.status_code})"
-        if self.cause_text:
-            log_msg += f" caused by: {self.cause_text}"
+        log_msg = f"[{self.code}] {self.summary}"
         log_extra = {
             "code": str(self.code),
             "category": str(self.category),
@@ -549,28 +390,17 @@ class OpticsError(Exception):
     def _print_rich(self, log_msg, code_prefix):
         try:
             console = get_console()
-            payload = self.to_payload(include_status=True)
             code_color = "red" if code_prefix in ("E", "X") else "yellow"
-            header = Text(f"❌ {payload['code']}", style=f"bold {code_color}")
-            category = Text(f"({payload['type']})", style="yellow")
-            message = Text(payload['message'], style="bold")
-            details = payload.get("details")
-            meta = payload.get("meta")
-            body = message
-            if payload.get("cause"):
-                body += Text(f"\nCaused by: {payload['cause']}")
-            if details:
-                body += Text(f"\n[dim]Details:[/dim] {details}")
-            if meta:
-                body += Text(f"\n[dim]Meta:[/dim] {meta}")
-            panel = Panel(body, title=header.plain + " " + category.plain, border_style=code_color)
-            console.print(panel)
+            body = Text(self.summary, style="bold")
+            if self.hint:
+                body.append(f"\n{self.hint}")
+            if self.details:
+                body.append(f"\n{self.details}", style="dim")
+            console.print(Panel(body, title=str(self.code), title_align="left", border_style=code_color))
         except ImportError:
             print(log_msg)
             if self.details:
                 print(f"Details: {self.details}")
-            if self.meta:
-                print(f"Meta: {self.meta}")
 
     def _log_with_logger(self, logger, level, log_msg, log_extra):
         logger = logger or internal_logger
@@ -586,30 +416,85 @@ class OpticsError(Exception):
     def to_payload(
         self, include_status: bool = False, meta: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Return a JSON-serializable payload suitable for HTTP error responses.
-
-        Format (machine-friendly):
-        {
-            "type": "optics:<category>",
-            "code": "E0101",
-            "status": 500,
-            "message": "...",
-            "details": {...},
-            "meta": {...},
-            "cause": "..."
-        }
-        """
+        """A JSON-serializable payload for HTTP error responses: ``{type, code, status, message, hint, details, meta, cause}``."""
         payload = ErrorPayload(
             type=f"optics:{self.category.value}",
             code=str(self.code),
             status=(self.status_code if include_status else None),
-            message=self.message,
+            message=self.summary,
+            hint=self.hint,
             details=self.details,
             meta=meta or self.meta,
             cause=self.cause_text,
         )
-        # return primitive dict for downstream compatibility
         return payload.model_dump()
+
+
+def element_label(locator: str) -> str:
+    """The element's name in the project when a ``${name}`` param named it, else the quoted locator."""
+    from optics_framework.common import test_context
+
+    names = test_context.element_names.get({})
+    return names.get(locator) or f"'{locator}'"
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+class ElementNotFound(OpticsError):
+    """The screen does not show the element; ``locators`` are the values that were looked for.
+
+    A specific reason in the cause chain (a web view that cannot be read, a covered element) is
+    shown; a source's own miss or a failed lookup inside a source is only in the technical detail.
+    """
+
+    show_cause = False
+
+    def __init__(
+        self,
+        locator: str,
+        code: str | Code = Code.E0201,
+        cause: Optional[BaseException] = None,
+        hint: Optional[str] = None,
+    ):
+        self.locators: tuple[str, ...] = (locator,)
+        specific = next(
+            (e for e in _chain(cause) if isinstance(e, OpticsError) and not isinstance(e, ElementNotFound)), None
+        ) if cause is not None else None
+        self.specific = specific
+        if specific is not None:
+            label = element_label(locator)
+            named = label != f"'{locator}'" or label not in specific.summary
+            message = f"Cannot find {label}: {specific.summary}" if named else specific.summary
+        else:
+            message = self.describe((locator,))
+        super().__init__(code, message=message, cause=cause, hint=hint)
+
+    @staticmethod
+    def describe(locators: tuple[str, ...]) -> str:
+        """``name is not on the screen. Looked for 'a' and 'b'.``, or ``'a' is not on the screen.`` without a name."""
+        labels = list(dict.fromkeys(element_label(locator) for locator in locators))
+        quoted = [f"'{locator}'" for locator in dict.fromkeys(locators)]
+        if labels == quoted:
+            return f"{_and(quoted)} is not on the screen." if len(quoted) == 1 else f"None of {_and(quoted)} is on the screen."
+        return f"{_and(labels)} is not on the screen. Looked for {_and(quoted)}."
+
+    @staticmethod
+    def merge(errors: list[OpticsError]) -> str | None:
+        """One sentence for several plain misses of the same element, else None."""
+        if not errors or not all(isinstance(e, ElementNotFound) and e.specific is None for e in errors):
+            return None
+        return ElementNotFound.describe(tuple(locator for e in errors for locator in e.locators))
+
+
+def undefined_element(name: str) -> OpticsError:
+    """A ``${name}`` reference with no value in the project's elements."""
+    return OpticsError(
+        Code.E0201,
+        message=f"${{{name}}} is not defined in the project's elements",
+        hint=f"Add {name} to an elements file, or correct the name.",
+    )
 
 
 def register_error(spec: ErrorSpec) -> None:
@@ -636,11 +521,16 @@ def raise_code(
 
 __all__ = [
     "Category",
+    "ElementNotFound",
     "ErrorSpec",
     "ERROR_REGISTRY",
+    "Explanation",
     "OpticsError",
+    "explain",
     "from_code",
+    "plain",
     "raise_code",
     "register_error",
+    "undefined_element",
     "ErrorPayload",
 ]

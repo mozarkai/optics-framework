@@ -29,6 +29,7 @@ class KeywordResult(BaseModel):
     elapsed: str
     status: str
     reason: str
+    hint: str = ""
     # What store_as kept, masked, so reports show the value per step.
     stored: dict[str, str] = Field(default_factory=dict)
 
@@ -38,6 +39,7 @@ class ModuleResult(BaseModel):
     elapsed: str
     status: str
     reason: str = ""
+    hint: str = ""
     keywords: List[KeywordResult] = Field(default_factory=list)
 
 
@@ -196,35 +198,33 @@ class TreeResultPrinter(IResultPrinter):
             Text(status_part, style=self.STATUS_COLORS.get(status, "white"))
         )
 
-    def _failure_detail_lines(self) -> List[str]:
-        """One line per failed step (and any step carrying a recorded reason)."""
-        lines: List[str] = []
+    def _failures(self) -> List[tuple[str, str, str]]:
+        """``(where, reason, hint)`` per failed step (and any step carrying a recorded reason), masked."""
+        failures: List[tuple[str, str, str]] = []
         for tc_result in self.test_state.values():
             for module in tc_result.modules:
-                lines.extend(
-                    self._module_failure_lines(tc_result.name, module))
-        return [mask_secrets(line) for line in lines]
+                if module.status == "FAIL" and module.reason:
+                    failures.append((f"{tc_result.name} › {module.name}", module.reason, module.hint))
+                for keyword in module.keywords:
+                    if keyword.status == "FAIL" or keyword.reason:
+                        where = f"{tc_result.name} › {module.name} › {keyword.resolved_name}"
+                        failures.append((where, keyword.reason, keyword.hint))
+        return [tuple(mask_secrets(part) for part in failure) for failure in failures]
 
-    @staticmethod
-    def _module_failure_lines(test_name: str,
-                              module: ModuleResult) -> List[str]:
-        lines: List[str] = []
-        if module.status == "FAIL" and module.reason:
-            lines.append(
-                f"{test_name} → step '{module.name}' — {module.reason}")
-        for keyword in module.keywords:
-            line = TreeResultPrinter._keyword_failure_line(test_name, keyword)
-            if line is not None:
-                lines.append(line)
-        return lines
-
-    @staticmethod
-    def _keyword_failure_line(test_name: str,
-                              keyword: KeywordResult) -> Optional[str]:
-        if keyword.status != "FAIL" and not keyword.reason:
+    def _failure_panel(self) -> Optional[Panel]:
+        failures = self._failures()
+        if not failures:
             return None
-        detail = f" — {keyword.reason}" if keyword.reason else ""
-        return f"{test_name} → step '{keyword.resolved_name}'{detail}"
+        text = Text()
+        for i, (where, reason, hint) in enumerate(failures):
+            if i:
+                text.append("\n\n")
+            text.append(where, style="bold")
+            if reason:
+                text.append(f"\n{reason}", style="red")
+            if hint:
+                text.append(f"\n{hint}", style="yellow")
+        return Panel(text, title="Failures", border_style="red")
 
     def _render_tree(self) -> Group:
         tree = Tree("Test Suite", style="bold white")
@@ -251,13 +251,9 @@ class TreeResultPrinter(IResultPrinter):
         summary_panel = Panel(
             summary_text, style="green" if failed == 0 else "red")
         renderables = [self.progress, tree, summary_panel]
-        failure_lines = self._failure_detail_lines()
-        if failure_lines:
-            renderables.append(Panel(
-                Text("\n".join(failure_lines), style="red"),
-                title="Failure details",
-                border_style="red",
-            ))
+        failure_panel = self._failure_panel()
+        if failure_panel is not None:
+            renderables.append(failure_panel)
         return Group(*renderables)
 
     def print_tree_log(self, test_case_result: TestCaseResult) -> None:

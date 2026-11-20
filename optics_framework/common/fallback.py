@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable, Iterator, Sequence
 from itertools import islice, product
 from typing import Any
 
-from optics_framework.common.error import Code, OpticsError, is_element_not_found
+from optics_framework.common.error import Code, ElementNotFound, OpticsError, is_element_not_found
 from optics_framework.common.logging_config import internal_logger
 
 MAX_ATTEMPTS = 20
@@ -33,23 +33,37 @@ def check_arity(method: Callable[..., Any], count: int, keyword: str) -> None:
 class FallbackExhausted(OpticsError):
     """Every tried combination failed to find its element; carries the last failure's code."""
 
-    def __init__(self, subject: str, failures: Sequence[tuple[Combo, OpticsError]], tried: int, total: int) -> None:
+    show_cause = False
+
+    def __init__(
+        self, subject: str, failures: Sequence[tuple[Combo, OpticsError]], tried: int, total: int, varying: Sequence[int] = ()
+    ) -> None:
         self.last = failures[-1][1]
         self.tried, self.total = tried, total
+        self.varying = tuple(varying)
         super().__init__(self.last.code, message=self._describe(subject, failures), cause=self.last)
 
     @property
     def limit_note(self) -> str:
-        return f" (stopped at the limit of {MAX_ATTEMPTS} of {self.total} combinations)" if self.total > self.tried else ""
+        return f" (tried {self.tried} of {self.total} combinations)" if self.total > self.tried else ""
 
     def _describe(self, subject: str, failures: Sequence[tuple[Combo, OpticsError]]) -> str:
         if self.tried == 1:
-            return self.last.message
+            return self.last.summary
+        errors = [error for _, error in failures]
+        merged = ElementNotFound.merge(errors) if self.tried == len(failures) else None
+        if merged:
+            return merged + self.limit_note
         omitted = self.tried - len(failures)
-        lines = [f"{combo} -> {error}" for combo, error in failures]
+        lines = [f"{_values(combo, self.varying)}: {error.summary}" for combo, error in failures]
         if omitted:
-            lines.insert(0, f"... {omitted} earlier attempts not shown")
-        return f"All {self.tried} fallback combinations failed for {subject}{self.limit_note}:\n" + "\n".join(lines)
+            lines.insert(0, f"({omitted} earlier tries not shown)")
+        return f"All {self.tried} tries of {subject} failed{self.limit_note}:\n" + "\n".join(lines)
+
+
+def _values(combo: Combo, varying: Sequence[int]) -> str:
+    shown = [combo[i] for i in varying] or list(combo)
+    return ", ".join(f"'{value}'" for value in shown)
 
 
 class _Ladder:
@@ -77,7 +91,8 @@ class _Ladder:
         self._failures.append((combo, exc))
 
     def exhausted(self) -> FallbackExhausted:
-        return FallbackExhausted(self.subject, list(self._failures), self.tried, self.total)
+        varying = [i for i, values in enumerate(self._candidates) if len(values) > 1]
+        return FallbackExhausted(self.subject, list(self._failures), self.tried, self.total, varying)
 
 
 def run[R](candidates: Sequence[Sequence[Any]], call: Callable[[Combo], R], subject: str) -> R:

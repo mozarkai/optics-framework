@@ -1,7 +1,7 @@
 import time
 from typing import Optional, Any, List, Tuple, Union
 
-from optics_framework.common.error import OpticsError, Code, is_element_not_found
+from optics_framework.common.error import ElementNotFound, OpticsError, Code, is_element_not_found
 from optics_framework.common.logging_config import SENSITIVE_PREFIX, internal_logger, mask_secrets
 from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
@@ -101,10 +101,12 @@ class Verifier:
     def _check_state(self, element: str, state: str) -> None:
         try:
             result = next(iter(self.strategy_manager.locate(element)), None)
-        except OpticsError:
-            result = None
+        except OpticsError as e:
+            result, missed = None, e
+        else:
+            missed = None
         if result is None or result.value is None:
-            raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+            raise missed if isinstance(missed, ElementNotFound) else ElementNotFound(element, cause=missed)
         located = result.value
         check, positive, opposite = self._ELEMENT_STATES[state]
         if isinstance(located, tuple):
@@ -149,7 +151,7 @@ class Verifier:
                 break
             if time.monotonic() >= deadline:
                 if actual is None or result is None:
-                    raise OpticsError(Code.E0201, message=f"Element '{element}' not found.")
+                    raise ElementNotFound(element)
                 shown = actual.strip()
                 if sensitive:
                     shown, want = "****", "****"

@@ -183,8 +183,8 @@ class TestAssertPresenceContract:
         manager = _sm(_MissingTextSource())
         with pytest.raises(OpticsError) as exc_info:
             manager.assert_presence(["Submit"], "Text", timeout=0, rule="any")
-        assert "OCR was not tried" in exc_info.value.message
-        assert "Text detection is not available" not in str(exc_info.value.__cause__)
+        assert (exc_info.value.code, exc_info.value.summary) == (Code.E0201, "'Submit' is not on the screen.")
+        assert "OCR is off" in exc_info.value.hint
 
 
 class TestGetInteractiveElementsStrategyScreening:

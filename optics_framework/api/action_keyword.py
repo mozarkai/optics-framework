@@ -6,7 +6,7 @@ from functools import partial
 from typing import Callable, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger, register_marked_secret
 from optics_framework.common.optics_builder import OpticsBuilder
-from optics_framework.common.strategies import StrategyManager, changing_screen, one_capture_per_source
+from optics_framework.common.strategies import NoLocatorSource, StrategyManager, changing_screen, one_capture_per_source
 from optics_framework.common.elementsource_interface import ScreenPoint
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common import keyword_outcome, test_context, utils
@@ -14,7 +14,7 @@ from optics_framework.common.agent_core import bind, runner_params, visible_para
 from optics_framework.common.ai_self_heal import (
     VALUE_PLACEHOLDER, AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
 )
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import Code, ElementNotFound, OpticsError, element_label
 from optics_framework.common.popup_guard import PopupGuard, PopupIO, PopupRun, Verdict
 from optics_framework.common.popup_screen import PopupScreen
 from optics_framework.common.screen_snapshot import read_screen
@@ -105,6 +105,17 @@ _POPUP_STOPS = (Code.E0206, Code.E0407, Code.E0408)
 
 def _is_covered(located: Any, allow_covered: bool) -> bool:
     return isinstance(located, ScreenPoint) and located.covered and not allow_covered
+
+
+def _not_located(element: Any, error: Optional[OpticsError]) -> OpticsError:
+    """The error for an element no strategy located: the strategy layer's own when it already says why."""
+    if isinstance(error, ElementNotFound) or (error is not None and error.code in (Code.E0205, *_POPUP_STOPS)):
+        return error
+    return ElementNotFound(element, cause=error)
+
+
+def _keyword_name(func_name: str) -> str:
+    return func_name.replace("_", " ").title()
 
 
 def _refuse_covered(located: Any, element: Any, allow_covered: bool) -> None:
@@ -587,11 +598,7 @@ class ActionKeyword:
             self._popup_before_self_heal()
             if self._ai_self_heal(element, func_name, intent_args, screenshot_np, value):
                 return None
-            raise OpticsError(
-                Code.E0201,
-                message=f"No valid strategies found for '{element}' in '{func_name}'",
-                cause=locate_error,
-            ) from locate_error
+            raise _not_located(element, locate_error)
         heal = partial(self._heal_after_popup_check, act_ran, element, func_name, intent_args, screenshot_np, value)
         return self._after_failed_acts(last_exception, unsupported, element, func_name, heal)
 
@@ -611,15 +618,16 @@ class ActionKeyword:
     ) -> None:
         """None when self-heal does the step; else the error that every located result's act ended in."""
         if error is None:
-            raise OpticsError(Code.E0801, message=f"Unexpected failure: No results or exceptions for '{element}' in '{func_name}'")
+            raise OpticsError(Code.E0801, message=f"{_keyword_name(func_name)} ended with no result and no error for {element_label(element)}")
         if unsupported:
             raise error  # each driver refused the action itself, so no other element or heal can do it
         if heal():
             return None
         raise OpticsError(
             Code.X0201,
-            message=f"All strategies failed for '{element}' in '{func_name}': {error}",
+            message=f"{element_label(element)} is on the screen, but {_keyword_name(func_name)} failed on it",
             cause=error,
+            hint="Make sure that no other element covers it and that it is enabled.",
         )
 
     def start_popup_run(self) -> None:
@@ -1050,7 +1058,7 @@ class ActionKeyword:
             self.driver.swipe_percentage(10, 50, direction, 25, event_name=event_name)
             time.sleep(3)
         if not found:
-            raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after swiping {direction} for {timeout}s.")
+            raise OpticsError(Code.E0201, message=f"{element_label(element)} did not appear after swiping {direction} for {timeout}s.")
 
     def swipe_from_element(self, element: str, direction: str, swipe_length: str, aoi_x: str = "0", aoi_y: str = "0",
                            aoi_width: str = "100", aoi_height: str = "100", event_name: Optional[str] = None,
@@ -1119,11 +1127,10 @@ class ActionKeyword:
             except OpticsError as e:
                 if e.code != Code.E0201:
                     raise
-                # Don't hide configuration/strategy issues; scrolling won't fix these.
-                if "No strategies found" in e.message or "No valid strategies found" in e.message:
+                if isinstance(e, NoLocatorSource):
                     raise
             if time.time() >= deadline:
-                raise OpticsError(Code.E0201, message=f"Element '{element}' did not appear after scrolling {direction} for {timeout}s.")
+                raise OpticsError(Code.E0201, message=f"{element_label(element)} did not appear after scrolling {direction} for {timeout}s.")
             self.driver.scroll(direction, 1000, event_name=event_name)
             time.sleep(3)
 

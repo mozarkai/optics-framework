@@ -9,7 +9,7 @@ from typing import Any
 
 import pandas as pd
 
-from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.error import Code, OpticsError, plain
 
 MAX_CHARS = 100_000
 MAX_NODES = 2_000
@@ -95,7 +95,7 @@ class _Evaluator:
         except RecursionError as e:
             raise _refuse(self.expression, "it is nested too deeply") from e
         except Exception as e:
-            raise OpticsError(Code.E0403, message=f"Error evaluating expression '{self.expression}': {e}", cause=e) from e
+            raise OpticsError(Code.E0403, message=f"Error evaluating expression '{self.expression}': {plain(e)}", cause=e) from e
 
     def _parse(self) -> ast.Expression:
         if len(self.source) > MAX_CHARS:
@@ -105,7 +105,7 @@ class _Evaluator:
         except (MemoryError, RecursionError) as e:
             raise _refuse(self.expression, "it is nested too deeply") from e
         except (SyntaxError, ValueError) as e:
-            raise OpticsError(Code.E0403, message=f"Invalid expression '{self.expression}': {e}", cause=e) from e
+            raise OpticsError(Code.E0403, message=f"Invalid expression '{self.expression}': {plain(e)}", cause=e) from e
         for count, node in enumerate(ast.walk(tree)):
             if count >= MAX_NODES:
                 raise _refuse(self.expression, f"it has more than {MAX_NODES} parts")

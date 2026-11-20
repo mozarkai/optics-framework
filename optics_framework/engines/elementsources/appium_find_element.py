@@ -6,7 +6,7 @@ from selenium.common.exceptions import WebDriverException
 from lxml import etree # type: ignore
 from selenium.common.exceptions import NoSuchElementException
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import ElementNotFound, OpticsError, Code, plain
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 from optics_framework.common.session_liveness import raise_if_session_dead
@@ -133,22 +133,19 @@ class AppiumFindElement(ElementSourceInterface):
                 return found_element
             except (AttributeError, TypeError) as e:
                 internal_logger.error('Error finding element: %s', element, exc_info=True)
-                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
+                raise ElementNotFound(element, cause=e) from e
         elif element_type in ('Text', 'Class') or (element_type == 'CSS' and self._web_ui()):
             by, value = self._query(element, element_type)
             position = 0 if index is None else index
             try:
                 found_element = self._find_nth(driver, by, value, position)
             except NoSuchElementException as e:
-                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
+                raise ElementNotFound(element, cause=e) from e
             except Exception as e:
                 internal_logger.exception(f"Unexpected error finding element {element}: {e}")
-                raise OpticsError(Code.E0201, message=f"Element of type {element_type} not found using: {element}", cause=e) from e
+                raise ElementNotFound(element, cause=e) from e
             if found_element is None:
-                raise OpticsError(
-                    Code.E0201,
-                    message=f"Element of type {element_type} and index {position} not found using: {element}",
-                )
+                raise ElementNotFound(element)
             return found_element
         return None
 
@@ -226,7 +223,7 @@ class AppiumFindElement(ElementSourceInterface):
                 if result is not None:
                     return result
             except Exception as e:
-                raise OpticsError(Code.E0401, message=f"Error during {error_desc}: {e}") from e
+                raise OpticsError(Code.E0401, message=f"Error during {error_desc}: {plain(e)}") from e
         internal_logger.warning(f"Timeout reached. Rule: {rule}, Elements: {elements}")
         raise TimeoutError(
             f"Timeout reached: {not_found_desc} based on rule '{rule}': {elements}"

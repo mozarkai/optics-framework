@@ -7,7 +7,7 @@ from lxml import etree  # type: ignore
 
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.elementsource_interface import ElementSourceInterface
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import ElementNotFound, OpticsError, Code
 from optics_framework.common import utils
 from optics_framework.common.xpath_index import XPathIndex
 
@@ -1226,11 +1226,7 @@ class PlaywrightPageSource(ElementSourceInterface, WebDomInspector):
                 element,
                 exc_info=True
             )
-            raise OpticsError(
-                Code.E0201,
-                message=f"No elements found for: {original_element}",
-                cause=e,
-            ) from e
+            raise ElementNotFound(original_element, cause=e) from e
 
     # ---------------------------------------------------------
     # Assertions

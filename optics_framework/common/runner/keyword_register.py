@@ -11,11 +11,11 @@ def suggest_keyword(name: str, slugs: Iterable[str]) -> str:
     if not matches:
         return ""
     pretty = matches[0].replace("_", " ").title()
-    return f" Did you mean '{pretty}'? (run `optics list` to see all keywords)"
+    return f" Did you mean '{pretty}'?"
 
 
 def keyword_not_found(name: str, slugs: Iterable[str]) -> OpticsError:
-    return OpticsError(Code.E0402, message=f"Keyword not found: {name}.{suggest_keyword(name, slugs)}")
+    return OpticsError(Code.E0402, message=f"'{name}' is not a keyword.{suggest_keyword(name, slugs)}")
 
 
 class KeywordRegistry:

@@ -199,7 +199,7 @@ def error_parts(exc: BaseException) -> tuple[str | None, str]:
     elif detail is not None:
         code, message = None, str(detail)
     else:
-        code, message = getattr(exc, "code", None), getattr(exc, "message", None) or str(exc)
+        code, message = getattr(exc, "code", None), getattr(exc, "summary", None) or getattr(exc, "message", None) or str(exc)
     return (str(code) if code else None), message
 
 

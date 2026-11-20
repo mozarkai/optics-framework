@@ -63,7 +63,7 @@ from optics_framework.engines.drivers.appium_platforms import (
     KEYCODE_CHORD,
     KEYCODE_RC_NAMED,
 )
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common.session_liveness import is_webdriver_server_unreachable, raise_if_session_dead
 
 _MAX_ERROR_OUTPUT_LINES = 20
@@ -260,6 +260,7 @@ class _QueryForwardingConnection(AppiumConnection):
 
 
 _MISSING_DRIVER = re.compile(r"Could not find a driver for automationName '([^']*)'")
+_APP_HINT = "Make sure that the app is installed on the device and that its package name or bundle id is correct."
 
 
 def _command_executor_and_config(
@@ -561,11 +562,11 @@ class Appium(DriverInterface):
     def _session_error(self, error: Exception) -> str:
         missing = _MISSING_DRIVER.search(str(error))
         if missing is None:
-            return f"Failed to create new Appium session due to: {error}"
+            return f"Appium could not start a session: {plain(error)}"
         return (
             f"The Appium server at {self.appium_server_url} has no driver for automationName '{missing[1]}'. "
             "Install the driver for that server. If it is installed, the server uses a different APPIUM_HOME, "
-            f"or another Appium server uses this port.\nAppium said: {error}"
+            f"or another Appium server uses this port. Appium said: {plain(error)}"
         )
 
     def start_session(
@@ -900,7 +901,7 @@ class Appium(DriverInterface):
             self.driver = None
             raise OpticsError(
                 Code.E0102,
-                message=f"Failed to attach to existing Appium session: {session_id} due to: {e}",
+                message=f"Failed to attach to existing Appium session: {session_id} due to: {plain(e)}",
                 cause=e,
             ) from e
 
@@ -953,7 +954,7 @@ class Appium(DriverInterface):
                 self.driver.terminate_app(app_name)
             internal_logger.info(f"Successfully terminated app: {app_name}")
         except Exception as e:
-            raise OpticsError(Code.E0401, message=f"Failed to force terminate app '{app_name}': {e}", cause=e) from e
+            raise OpticsError(Code.E0401, message=f"Failed to force terminate app '{app_name}': {plain(e)}", cause=e) from e
 
     def terminate(self, event_name: Optional[str] = None) -> None:
         """End the Appium session if active."""
@@ -1175,7 +1176,7 @@ class Appium(DriverInterface):
         try:
             self._activate_app(self._require_driver(), app)
         except Exception as exc:
-            raise OpticsError(Code.E0401, message=f"Failed to launch: {app}", cause=exc) from exc
+            raise OpticsError(Code.E0401, message=f"Could not open {app}", cause=exc, hint=_APP_HINT) from exc
 
     def launch_other_app(
             self,
@@ -1209,11 +1210,7 @@ class Appium(DriverInterface):
             # Preserve original OpticsError without wrapping
             raise
         except Exception as exc:
-            raise OpticsError(
-                Code.E0401,
-                message=f"Failed to launch: {app_name}",
-                cause=exc,
-            ) from exc
+            raise OpticsError(Code.E0401, message=f"Could not open {app_name}", cause=exc, hint=_APP_HINT) from exc
 
 
     def get_driver(self) -> Optional[WebDriver]:
@@ -1755,7 +1752,7 @@ class Appium(DriverInterface):
         except OpticsError:
             raise
         except Exception as e:
-            raise OpticsError(Code.E0401, message=f"Error during text input: {e}", cause=e) from e
+            raise OpticsError(Code.E0401, message=f"Error during text input: {plain(e)}", cause=e) from e
 
     def get_char_as_keycode(self, char: str) -> Optional[int]:
         # Basic lowercase mapping; extend as needed
@@ -1829,7 +1826,7 @@ class Appium(DriverInterface):
             except WebDriverException:
                 text = None
         if text is None:
-            raise OpticsError(Code.E0401, message="Element text is None")
+            raise OpticsError(Code.E0401, message="The element has no text")
         return text
 
     @supported_on(*POINTER)
@@ -1866,7 +1863,7 @@ class Appium(DriverInterface):
                 timestamp = self.event_sdk.get_current_time_for_events()
                 self._press_target(element).click()
             except Exception as e:
-                raise OpticsError(Code.E0401, message=f"Error occurred while clicking on element: {e}", cause=e) from e
+                raise OpticsError(Code.E0401, message=f"Error occurred while clicking on element: {plain(e)}", cause=e) from e
         if event_name and timestamp is not None:
             self.event_sdk.capture_event_with_time_input(event_name, timestamp)
             internal_logger.debug("Clicked on element: %s at %s", element, timestamp)

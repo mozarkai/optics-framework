@@ -4,6 +4,7 @@ from fuzzywuzzy import fuzz
 from lxml import etree
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common import utils
+from optics_framework.common.error import Code, ElementNotFound, OpticsError
 from optics_framework.common.xpath_index import XPathIndex
 ## Removed import of get_appium_driver (no longer needed)
 
@@ -646,10 +647,10 @@ class UIHelper:
             f"Found {len(matches)} matches for '{element}': {matches}"
         )
 
+        if not matches:
+            raise ElementNotFound(element)
         if index >= len(matches):
-            raise IndexError(
-                f"Index {index} is out of range for the matches found. Total matches: {len(matches)}."
-            )
+            raise OpticsError(Code.E0201, message=f"'{element}' matched {len(matches)} element(s); index {index} is out of range.")
 
         desired_match = matches[index]
         internal_logger.debug(

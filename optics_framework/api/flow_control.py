@@ -18,7 +18,7 @@ from optics_framework.common.logging_config import internal_logger, execution_lo
 from optics_framework.common.session_manager import Session
 from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.caller_policy import refuse_server_read
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common import expression, test_context, utils
 
 
@@ -117,6 +117,24 @@ def _append_har_entry(path: str, entry: bytes) -> None:
         f.write(HAR_HEADER + entry + HAR_TRAILER)
 
 
+class StepFailed(OpticsError):
+    """A step inside a module failed; ``steps`` is the path from the outermost module down to that step."""
+
+    show_cause = False
+
+    def __init__(self, steps: tuple[str, ...], error: BaseException):
+        self.steps = steps
+        self.reason = error.reason if isinstance(error, StepFailed) else plain(error)
+        super().__init__(Code.E0401, message=f"{' › '.join(steps)}: {self.reason}", cause=error)
+
+    @classmethod
+    def inside(cls, module: str, step: str, error: BaseException) -> "StepFailed":
+        """``error`` from ``step`` of ``module``; a nested module's path replaces the step that ran it."""
+        if isinstance(error, StepFailed):
+            return cls((module, *error.steps), error)
+        return cls((module, step), error)
+
+
 class FlowControl:
     """Manages control flow operations (loops, conditions, data) for a session."""
 
@@ -168,11 +186,7 @@ class FlowControl:
         if keyword == parent_module:
             raise OpticsError(Code.E0401, message=f"Module '{parent_module}' contains a self-call to '{keyword}'.")
         internal_logger.debug(f"Keyword '{keyword}' not found in keyword_map; invoking module '{keyword}'.")
-        try:
-            return self.execute_module(keyword)
-        except Exception as e:
-            internal_logger.error(f"Error executing nested module '{keyword}': {e}")
-            raise OpticsError(Code.E0401, message=f"Error executing nested module '{keyword}': {e}", cause=e)
+        return self.execute_module(keyword)
 
     def _execute_keyword_method(
         self, method: Callable[..., Any], keyword: str, params: List[Any]
@@ -188,11 +202,7 @@ class FlowControl:
             for i, p in enumerate(params)
         ])
         execution_logger.info(f"Executing {keyword} with params: {resolved_params}")
-        try:
-            return utils.call_and_store(elements, method, resolved_params, {}, store_as)[0]
-        except Exception as e:
-            internal_logger.error(f"Error executing keyword '{keyword}': {e}")
-            raise OpticsError(Code.E0401, message=f"Error executing keyword '{keyword}': {e}", cause=e)
+        return utils.call_and_store(elements, method, resolved_params, {}, store_as)[0]
 
     def _execute_single_keyword(
         self, module_name: str, keyword: str, params: List[Any]
@@ -205,7 +215,7 @@ class FlowControl:
         nested_def = self._try_get_module_definition(keyword)
         if nested_def is not None:
             return self._execute_nested_module(module_name, keyword)
-        raise OpticsError(Code.E0402, message=f"Keyword '{keyword}' not found in keyword_map.")
+        raise OpticsError(Code.E0402, message=f"'{keyword}' is not a keyword or a module")
 
     def execute_module(self, module_name: str) -> List[Any]:
         """Executes a module's keywords using the session's keyword_map.
@@ -221,7 +231,11 @@ class FlowControl:
         results = []
         execution_logger.info(f"Executing module: {module_name}")
         for keyword, params in module_def:
-            results.append(self._execute_single_keyword(module_name, keyword, params))
+            try:
+                results.append(self._execute_single_keyword(module_name, keyword, params))
+            except Exception as e:
+                internal_logger.error(f"Step '{keyword}' of module '{module_name}' failed: {e}")
+                raise StepFailed.inside(module_name, keyword, e) from e
         return results
 
     @raw_params(1, 3, 5, 7, 9, 11, 13, 15)
@@ -446,7 +460,7 @@ class FlowControl:
                 return self.execute_module(target)
             except Exception as e:
                 execution_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {e}.")
-                raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {e}", cause=e)
+                raise e if isinstance(e, StepFailed) else StepFailed((target,), e) from e
         except Exception as e:
             # Module execution failed
             internal_logger.warning(f"[_EVALUATE_CONDITIONS] Module '{actual_cond}' raised error: {e}.")
@@ -457,7 +471,7 @@ class FlowControl:
                     return self.execute_module(target)
                 except Exception as target_e:
                     internal_logger.warning(f"[_EVALUATE_CONDITIONS] Target module '{target}' raised error: {target_e}.")
-                    raise OpticsError(Code.E0401, message=f"Error executing target module '{target}': {target_e}", cause=target_e)
+                    raise target_e if isinstance(target_e, StepFailed) else StepFailed((target,), target_e) from target_e
             # If not inverted, failure means we should NOT execute target
             return None
 
@@ -485,7 +499,7 @@ class FlowControl:
             if invert:
                 internal_logger.debug(f"[_is_condition_true] Condition '{actual_cond}' failed, but inverting result to True.")
                 return True
-            raise OpticsError(Code.E0403, message=f"Error evaluating condition '{cond}': {e}")
+            raise OpticsError(Code.E0403, message=f"Cannot evaluate the condition '{cond}': {plain(e)}") from e
 
     def _module_succeeds(self, module: str) -> bool:
         try:
@@ -1154,7 +1168,7 @@ class FlowControl:
             return response
         except requests.RequestException as e:
             internal_logger.error(f"API request to {url} failed: {e}")
-            raise OpticsError(Code.E0401, message=f"API request to {url} failed: {e}", cause=e)
+            raise OpticsError(Code.E0401, message=f"API request to {url} failed: {plain(e)}", cause=e)
 
     def _write_api_log(self, log_file_path, method, url, headers, body, response):
         """Append one JSON object per call, so no URL or response text can forge another record."""
@@ -1269,7 +1283,7 @@ class FlowControl:
             internal_logger.warning(
                 f"API response is not valid JSON; cannot extract values. Error: {e}"
             )
-            raise OpticsError(Code.E0403, message=f"API response is not valid JSON: {e}", cause=e)
+            raise OpticsError(Code.E0403, message=f"API response is not valid JSON: {plain(e)}", cause=e)
 
     def _log_extraction_attempt(self, extract_paths):
         """Logs the extraction attempt based on available paths."""

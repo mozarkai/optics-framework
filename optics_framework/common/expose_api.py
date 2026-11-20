@@ -27,11 +27,11 @@ from optics_framework.common.logging_config import internal_logger, reconfigure_
 from optics_framework.common.http_guard import add_http_guards
 from optics_framework.common.image_decode import image_size
 from optics_framework.common import fallback
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common.config_handler import Config, DependencyConfig, env_names
 from optics_framework.common.caller_policy import refuse_local_capabilities
 from optics_framework.common.runner.event_stream import OutputMode
-from optics_framework.common.runner.keyword_register import KeywordRegistry
+from optics_framework.common.runner.keyword_register import KeywordRegistry, keyword_not_found
 from optics_framework.common.utils import _is_list_type, encode_numpy_to_base64, redact_url
 from optics_framework.api import ActionKeyword, AppManagement, FlowControl, Verifier
 from optics_framework.api.flow_control import reads_environment
@@ -886,7 +886,7 @@ async def _handle_execution_failure(
     await session.event_queue.put(ExecutionEvent(
         execution_id=execution_id,
         status=STATUS_FAIL,
-        message=f"Keyword {keyword} failed: {str(e)}"
+        message=f"{keyword}: {plain(e)}"
     ).model_dump())
     if isinstance(e, OpticsError):
         raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
@@ -942,7 +942,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
         method = registry.keyword_map.get(keyword_slug)
 
         if not method:
-            raise OpticsError(Code.E0402, message=f"Keyword {request.keyword} not found")
+            raise keyword_not_found(request.keyword, registry.keyword_map)
         _reject_server_env_read(keyword_slug, request.params)
 
         result = await _execute_keyword_with_fallback(

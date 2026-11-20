@@ -904,7 +904,7 @@ class BaseRunner:
             )
         except OpticsError as error:
             abort_with_panel([
-                error.message,
+                error.summary,
                 "",
                 f"Check the setup with:  optics doctor {self.folder_path}",
             ], error.code.value)

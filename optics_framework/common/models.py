@@ -4,7 +4,7 @@ from typing import Optional, Dict, List, Callable, Any, Literal
 from lxml import etree  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from optics_framework.common.logging_config import internal_logger, register_marked_secret
-from optics_framework.common.error import OpticsError, Code
+from optics_framework.common.error import OpticsError, Code, plain, undefined_element
 
 # State Enum
 class State(str, Enum):
@@ -231,7 +231,7 @@ class ElementData(BaseModel):
         """
         values = self.get_element(name)
         if not values:
-            raise OpticsError(Code.E0201, f"Element not found: {name}")
+            raise undefined_element(name)
 
         attempts = 0
         cap = max_attempts if (max_attempts is not None) else len(values)
@@ -252,7 +252,8 @@ class ElementData(BaseModel):
                 # continue to next value
 
         # exhausted
-        raise OpticsError(Code.X0201, f"Element '{name}' not found after attempting {attempts} value(s); last error: {getattr(last_exc, 'args', last_exc)}")
+        last = f": {plain(last_exc)}" if last_exc is not None else ""
+        raise OpticsError(Code.X0201, f"None of the {attempts} values of {name} worked{last}", cause=last_exc)
 
 
 class RequestDefinition(BaseModel):
