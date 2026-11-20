@@ -19,8 +19,11 @@ from optics_framework.common.runner.data_reader import (
     is_elements_header,
     named_locators,
     parse_module_step,
+    read_popup_rules,
 )
+from optics_framework.common.models import merge_popup_rules, parse_popup_rules
 from optics_framework.common.utils import unescape_csv_value
+from optics_framework.helper.execute import find_popup_rules
 
 _KWARG = re.compile(r"^([A-Za-z_]\w*)=(.*)$", re.DOTALL)
 
@@ -58,7 +61,14 @@ def _keyword_argument(param: str, accepted: Optional[frozenset]) -> Optional[Tup
 
 TestCaseKey = "Test Cases"
 
-_CONFIG_SECTIONS = ("driver_sources", "elements_sources", "text_detection", "image_detection")
+_CONFIG_SECTIONS = {
+    "driver_sources": [],
+    "elements_sources": [],
+    "text_detection": [],
+    "image_detection": [],
+    "popup_rules": [],
+    "permissions": {},
+}
 _PYTEST_RESERVED = frozenset(
     {"os", "pytest", "Optics", "load_config", "optics", "CONFIG", "ELEMENTS", "PROJECT_PATH", "EXECUTION_OUTPUT_PATH"}
 )
@@ -354,7 +364,7 @@ class PytestGenerator(TestFrameworkGenerator):
                 "os.makedirs(EXECUTION_OUTPUT_PATH, exist_ok=True)",
                 "",
                 "CONFIG = {",
-                *(f"    {key!r}: {_python_literal(config.get(key) or [])}," for key in _CONFIG_SECTIONS),
+                *(f"    {key!r}: {_python_literal(config.get(key) or empty)}," for key, empty in _CONFIG_SECTIONS.items()),
                 "    'execution_output_path': EXECUTION_OUTPUT_PATH,",
                 "    'project_path': PROJECT_PATH,",
                 "    'event_attributes_json': os.environ.get('MOZARK_ATTRIBUTES_JSON'),",
@@ -449,6 +459,9 @@ class RobotGenerator(TestFrameworkGenerator):
             transformed["text_detection"] = config.get('text_detection', [])
         if config.get('execution_output_path'):
             transformed["execution_output_path"] = config.get('execution_output_path')
+        for key in ("popup_rules", "permissions"):
+            if config.get(key):
+                transformed[key] = config[key]
         return transformed
 
     def _generate_variables(self, elements: Elements, keys: dict[str, str], config: Config) -> str:
@@ -752,6 +765,11 @@ def generate_test_file(
     # Config is always single YAML file
     config_reader = YAMLDataReader()
     config = config_reader.read_config(all_files["config"][0])
+    rules = parse_popup_rules(config.get("popup_rules") or [], "popup_rules")
+    for path in find_popup_rules(folder_path):
+        rules = merge_popup_rules(rules, read_popup_rules(path))
+    if rules:
+        config["popup_rules"] = [rule.model_dump(mode="json") for rule in rules]
 
     output_filename = output_filename or default_filename
     generated_folder = str(safe_fs.make_dirs("generated", folder_path))
