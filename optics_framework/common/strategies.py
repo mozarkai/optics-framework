@@ -394,29 +394,32 @@ def _absent(missing: list, rule: str) -> str:
 
 
 def _invalid_xpath(element: str, effective: str, text_only: bool) -> Optional[OpticsError]:
-    """Why a missed XPath may never match: a syntax error, which reads better than a plain miss."""
+    """Why a missed XPath may never match. Only a note: the device's own XPath engine may still accept it."""
     if text_only or utils.determine_element_type(element) != "XPath":
         return None
     problem = utils.xpath_problem(effective)
     if problem is None:
         return None
     return OpticsError(
-        Code.E0205,
+        Code.E0201,
         message=f"'{element}' is not on the screen, and it is not valid XPath 1.0: {problem}",
         hint="Correct the XPath. Each [ and ( needs its ] and ), and each quote needs its closing quote.",
     )
 
 
 def _not_found(element: str, effective: str, text_only: bool, cause: Optional[Exception], hint: Optional[str]) -> OpticsError:
-    return _invalid_xpath(element, effective, text_only) or ElementNotFound(element, cause=cause, hint=hint)
+    return ElementNotFound(element, cause=_invalid_xpath(element, effective, text_only) or cause, hint=hint)
 
 
 def _assert_miss(
     elements: list, parsed: list, effective: list, state: "_AssertState", rule: str, ocr_skipped: bool
 ) -> OpticsError:
     missing = [i for i, looked in enumerate(effective) if not state.found.get(looked)] or list(range(len(elements)))
-    invalid = (_invalid_xpath(parsed[i][0], effective[i], parsed[i][1]) for i in missing)
-    return next(filter(None, invalid), None) or OpticsError(
+    invalid = ((i, _invalid_xpath(parsed[i][0], effective[i], parsed[i][1])) for i in missing)
+    first = next(((i, note) for i, note in invalid if note), None)
+    if first is not None:
+        return ElementNotFound(elements[first[0]], cause=first[1])
+    return OpticsError(
         Code.E0201,
         message=_absent([elements[i] for i in missing], rule),
         cause=state.last_exception,
