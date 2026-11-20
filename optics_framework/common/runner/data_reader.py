@@ -100,13 +100,20 @@ _FACADE_KEYWORD_SLUGS = {"press_element_with_index": 3, "quit": 0}
 _LOCATOR_PREFIXES = {"text", "css", "xpath"}
 
 
-def _arity(method) -> Optional[int]:
-    """How many params a keyword takes, or nothing when it takes any number. Unreadable
-    signatures answer "any number" so a keyword is never rejected for the wrong reason."""
+def readable_signature(method: Callable) -> Optional[inspect.Signature]:
+    """The keyword's signature, or None when Python cannot read it (``str``, ``max``); such a keyword takes any params."""
     try:
-        parameters = list(inspect.signature(method).parameters.values())
+        return inspect.signature(method)
     except (TypeError, ValueError):
         return None
+
+
+def _arity(method) -> Optional[int]:
+    """How many params a keyword takes, or nothing when it takes any number."""
+    signature = readable_signature(method)
+    if signature is None:
+        return None
+    parameters = list(signature.parameters.values())
 
     count = 0
     for parameter in parameters:
@@ -300,11 +307,9 @@ class DataReader(ABC):
         ``Enter Text,text=Name,Ava`` locates ``text=Name`` instead of typing "Name". When the signature cannot be read the historical behaviour
         is kept (every ``key=value`` is a keyword argument).
         """
-        try:
-            names = list(inspect.signature(method).parameters)
-            valid: Optional[set] = set(names)
-        except (TypeError, ValueError):
-            names, valid = [], None
+        signature = readable_signature(method)
+        names = list(signature.parameters) if signature else []
+        valid: Optional[set] = set(names) if signature else None
         positional: List[str] = []
         keywords: Dict[str, str] = {}
         named = {p.split("=", 1)[0].strip() for p in param_strings if DataReader.is_keyword_param(p)}
