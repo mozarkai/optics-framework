@@ -3,9 +3,13 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+import yaml
 
-from optics_framework.common.config_handler import load_project_yaml
+from optics_framework.common.config_handler import config_from, load_project_yaml
 from optics_framework.helper import config_manager
+
+NOTICE = {"name": "notice", "detect": {"text_contains": ["Notice"]}, "action": {"type": "back"}}
+NOTICE_YAML = "{name: notice, detect: {text_contains: [Notice]}, action: {type: back}}"
 
 
 class TestEditorSetsAnUnsetField:
@@ -18,20 +22,24 @@ class TestEditorSetsAnUnsetField:
 
         assert load_project_yaml(str(tmp_path / "config.yaml"))["name"] == "checkout_suite"
 
-    async def test_editor_shows_why_it_refuses_a_value_and_keeps_the_old_one(self, tmp_path):
-        (tmp_path / "config.yaml").write_text("permissions: {camera: allow}\n", encoding="utf-8")
+    @pytest.mark.parametrize("field, kept, entered, reason", [
+        ("permissions", {"camera": "allow"}, "{camera: maybe}", "Input should be 'allow' or 'deny'"),
+        ("popup_rules", [NOTICE], f"[{NOTICE_YAML}, {NOTICE_YAML}]", "popup_rules: rule names must be unique"),
+    ], ids=["field type", "whole config"])
+    async def test_editor_shows_why_it_refuses_a_value_and_keeps_the_old_one(self, tmp_path, field, kept, entered, reason):
+        (tmp_path / "config.yaml").write_text(yaml.safe_dump({field: kept}), encoding="utf-8")
         app = config_manager.ProjectConfigTUI(str(tmp_path))
         async with app.run_test() as pilot:
-            app.query_one("#config-list").index = app.options.index("permissions")
+            app.query_one("#config-list").index = app.options.index(field)
             await pilot.press("space")
-            app.query_one("#edit-input").value = "{camera: maybe}"
+            app.query_one("#edit-input").value = entered
             await pilot.press("enter")
-            assert "Input should be 'allow' or 'deny'" in str(app.screen.query_one(".error-message").render())
+            assert reason in str(app.screen.query_one(".error-message").render())
             await pilot.click("#ok")
             await pilot.press("s")
 
-        assert load_project_yaml(str(tmp_path / "config.yaml"))["permissions"] == {"camera": "allow"}
-
+        saved = config_from(load_project_yaml(str(tmp_path / "config.yaml")))
+        assert getattr(saved, field) == getattr(config_from({field: kept}), field)
 
 def _editor_setting(field, value):
     async def drive(app):
@@ -46,6 +54,7 @@ def _editor_setting(field, value):
 @pytest.mark.parametrize("permissions, shown", [
     ({"telepathy": "allow"}, "Unknown permission 'telepathy'"),
     ({"camera": "yes_please"}, "permissions.camera: Input should be 'allow' or 'deny' (got 'yes_please')"),
+    ({"camera": "[/]"}, "permissions.camera: Input should be 'allow' or 'deny' (got '[/]')"),
 ])
 class TestConfigureOpensAConfigWithABadValue:
     def test_edit_warns_then_saves_the_bad_value_as_written(self, tmp_path, monkeypatch, capsys, permissions, shown):
@@ -71,3 +80,10 @@ class TestConfigureOpensAConfigWithABadValue:
         monkeypatch.setattr(config_manager.Confirm, "ask", lambda *a, **k: False)
         config_manager.configure(str(tmp_path))
         assert shown in " ".join(capsys.readouterr().err.split())
+
+
+def test_configure_offers_to_replace_a_config_that_is_not_a_mapping(tmp_path, monkeypatch, capsys):
+    (tmp_path / "config.yaml").write_text("- camera\n", encoding="utf-8")
+    monkeypatch.setattr(config_manager.Confirm, "ask", lambda *a, **k: False)
+    config_manager.configure(str(tmp_path))
+    assert "Aborted; existing config left unchanged." in capsys.readouterr().out
