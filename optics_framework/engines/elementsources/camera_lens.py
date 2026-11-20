@@ -298,7 +298,7 @@ class _MacUvc:
     def __del__(self) -> None:
         if not getattr(self, "_release", None):
             return
-        if self._manual and self._auto_before is not None:
+        if self._auto_before is not None:
             try:
                 self._set(FOCUS_AUTO, self._auto_before, 1)
             except OSError as exc:
