@@ -175,6 +175,52 @@ def test_a_rule_that_checks_before_each_step_clears_the_popup_before_the_lookup(
     assert (event["check"], event["verdict"]) == ("before_every_step", "handled")
 
 
+CHAT = "<hierarchy><n text='Balance' package='in.app'/><n text='Chat with us'/><n text='Minimise'/></hierarchy>"
+MINIMISE = (30, 40)
+
+
+class PhoneWithChat(Phone):
+    """Closing Rate Us brings up a chat bubble that takes any tap on the card until it is minimised."""
+
+    def __init__(self):
+        super().__init__()
+        self.chat = False
+
+    def _press(self, x, y, event_name=None):
+        self.pressed.append((x, y))
+        if (x, y) == MAYBE_LATER:
+            self.popup, self.chat = False, True
+        elif (x, y) == MINIMISE:
+            self.chat = False
+        elif (x, y) == CARD and self.chat:
+            raise RuntimeError("the chat bubble took the tap")
+
+    def locate(self, element, *args, **kwargs):
+        if element == "Minimise" and self.chat:
+            self.looked_up.append(element)
+            yield LocateResult(MINIMISE, MagicMock())
+        else:
+            yield from Phone.locate(self, element, *args, **kwargs)
+
+    def capture_pagesource(self):
+        if self.chat:
+            self.source_reads += 1
+            return (CHAT, "ts")
+        return Phone.capture_pagesource(self)
+
+
+def test_the_retry_after_a_dismissed_popup_checks_the_before_each_step_rules_again():
+    phone = PhoneWithChat()
+    chat = rule("Chat", detect={"text_contains": ["chat with us"]}, action={"type": "tap", "target": "Minimise"}, check="before_every_step")
+    ak, _ = keyword(phone, rule(), chat)
+    ak.press_element("Balance card")
+    assert phone.pressed == [MAYBE_LATER, MINIMISE, CARD]
+    assert [(e["check"], e["rule"]) for e in ak._popup_run().drain() if e["verdict"] == "handled"] == [
+        ("on_failure", "Rate Us"), ("before_every_step", "Chat")
+    ]
+    ak._ai_self_heal.assert_not_called()
+
+
 def test_a_stop_rule_ends_the_run_through_the_error_and_the_run_record():
     phone = Phone()
     ak, _ = keyword(phone, rule(then="stop_run"))
