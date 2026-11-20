@@ -174,23 +174,19 @@ class TestModuleStepResolution:
         runner.result_printer.test_state = {"tc": tc_result}
         return tc_result, module_result
 
-    async def test_unknown_step_fails_dry_run(self):
-        runner = _make_runner()
-        step = "Bogus Keyword Of Doom hello"
-        tc_result, module_result = self._wire_module(runner, step)
-        ok = await runner._dry_run_module(_mod_node(name=step), tc_result, "tc-node-1")
-        assert ok is False
-        assert module_result.status == "FAIL"
-        assert module_result.reason == f"'{step}' is not a keyword or a module."
-
-    async def test_unknown_step_fails_batch(self):
+    @pytest.mark.parametrize("method,arg", [("_dry_run_module", "tc-node-1"), ("_process_module", {})])
+    async def test_unknown_step_fails(self, method, arg):
         runner = _make_runner(keyword_map={"known": lambda: None})
         step = "Bogus Keyword Of Doom hello"
         tc_result, module_result = self._wire_module(runner, step)
-        ok = await runner._process_module(_mod_node(name=step), tc_result, {})
-        assert ok is False
+        assert await getattr(runner, method)(_mod_node(name=step), tc_result, arg) is False
         assert module_result.status == "FAIL"
         assert module_result.reason == f"'{step}' is not a keyword or a module."
+
+    def test_dry_run_checks_the_keyword_before_its_variables(self):
+        runner = _make_runner(keyword_map={"press_element": lambda *a: None})
+        with pytest.raises(OpticsError, match="E0402"):
+            runner._dry_run_keyword(_kw_node(name="Pres Element", params=["${sign_up}"]), None)
 
 
 class TestFailuresPanel:
