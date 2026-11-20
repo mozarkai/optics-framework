@@ -38,6 +38,7 @@ from optics_framework.common.models import (
     ModuleData,
     TemplateData,
     ErrorDefinitions,
+    PopupRule,
     merge_popup_rules,
 )
 from optics_framework.helper.abort import abort_with_panel
@@ -59,6 +60,29 @@ def _read_module_names(reader, file_path) -> Set[str]:
     if _reader_accepts_module_names(reader):
         return set(reader.read_modules(file_path, None))
     return set(reader.read_modules(file_path))
+
+
+def load_modules(module_files: List[str]) -> ModuleData:
+    """Every module the files define; a later file's module of the same name wins."""
+    readers: Dict[bool, Any] = {True: CSVDataReader(), False: YAMLDataReader()}
+    modules_data = ModuleData()
+    # Every module name first, across every file: a YAML step referencing a module is told
+    # from a keyword call by name, and the module it names may be defined in another file.
+    module_names: Set[str] = set()
+    for file_path in module_files:
+        module_names |= _read_module_names(readers[file_path.endswith(".csv")], file_path)
+    for file_path in module_files:
+        reader = readers[file_path.endswith(".csv")]
+        modules = (
+            reader.read_modules(file_path, module_names)
+            if _reader_accepts_module_names(reader)
+            else reader.read_modules(file_path)
+        )
+        for name, definition in modules.items():
+            if modules_data.get_module_definition(name):
+                internal_logger.warning(f"Duplicate modules key '{name}' found. Overwriting.")
+            modules_data.add_module_definition(name, definition)
+    return modules_data
 
 
 def discover_templates(project_path: str) -> TemplateData:
@@ -106,7 +130,6 @@ def find_files(folder_path: str) -> tuple[list[Any], list[Any], list[Any], list[
             elif lname.endswith(".csv"):
                 _process_csv_file(file_path, file_collections)
 
-    validate_required_files(file_collections["test_case"], file_collections["module"], folder_path)
     return (
         file_collections["test_case"],
         file_collections["module"],
@@ -127,6 +150,13 @@ def find_popup_rules(folder_path: str) -> list[str]:
         for root, _dirs, files in os.walk(folder_path)
         if POPUP_RULES_FILE in files
     )
+
+
+def merge_project_popup_rules(rules: List[PopupRule], folder_path: str) -> List[PopupRule]:
+    """``rules`` with every ``popup_rules.json`` in the project merged over them by rule name, as each entry point reads them."""
+    for path in find_popup_rules(folder_path):
+        rules = merge_popup_rules(rules, read_popup_rules(path))
+    return rules
 
 
 def _initialize_file_collections():
@@ -714,6 +744,7 @@ class BaseRunner:
             error_definition_files,
             config_obj,
         ) = find_files(self.folder_path)
+        validate_required_files(test_case_files, module_files, self.folder_path)
 
         self._init_data_readers()
         self._load_test_cases(test_case_files)
@@ -759,26 +790,7 @@ class BaseRunner:
             )
 
     def _load_modules(self, module_files):
-        self.modules_data: ModuleData = ModuleData()
-        # Every module name first, across every file: a YAML step referencing a module is told
-        # from a keyword call by name, and the module it names may be defined in another file.
-        module_names = set()
-        for file_path in module_files:
-            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            module_names |= _read_module_names(reader, file_path)
-        for file_path in module_files:
-            reader = self.csv_reader if file_path.endswith(".csv") else self.yaml_reader
-            modules = (
-                reader.read_modules(file_path, module_names)
-                if _reader_accepts_module_names(reader)
-                else reader.read_modules(file_path)
-            )
-            for name, definition in modules.items():
-                if self.modules_data.get_module_definition(name):
-                    internal_logger.warning(
-                        f"Duplicate modules key '{name}' found. Overwriting."
-                    )
-                self.modules_data.add_module_definition(name, definition)
+        self.modules_data: ModuleData = load_modules(module_files)
 
     def _load_elements(self, element_files):
         """
@@ -824,11 +836,10 @@ class BaseRunner:
 
     def _load_popup_rules(self):
         """Merge each ``popup_rules.json`` in the project into the session config, over any rule of the same name there."""
-        for path in find_popup_rules(self.folder_path):
-            try:
-                self.config.popup_rules = merge_popup_rules(self.config.popup_rules, read_popup_rules(path))
-            except OpticsError as e:
-                abort_with_panel([e.message, "", f"Fix it in {path}, then re-run."], e.code.value)
+        try:
+            self.config.popup_rules = merge_project_popup_rules(self.config.popup_rules, self.folder_path)
+        except OpticsError as e:
+            abort_with_panel([e.message, "", "Fix that popup_rules.json, then re-run."], e.code.value)
 
     def _load_templates(self):
         """Load template data by discovering image files in the project directory."""

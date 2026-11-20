@@ -51,7 +51,7 @@ from optics_framework.common.events import (
     Event,
     redact_event,
 )
-from optics_framework.common.runner.data_reader import DataReader, readable_signature
+from optics_framework.common.runner.data_reader import bind_params, step_arguments
 from optics_framework.common.popup_guard import PopupRun, Verdict
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import fallback, utils
@@ -96,17 +96,6 @@ class Runner:
         if failed and reason and reason == self._last_failure_reason and self._last_failure_hint:
             return {"hint": self._last_failure_hint}
         return {}
-
-    def _resolve_candidate_params(self, method, candidate_args):
-        candidate_args = utils.substitute_inline(method, list(candidate_args), self.elements)
-        positional_params, kw_params = DataReader.split_params_by_signature(
-            method, candidate_args)
-        raw = utils.raw_param_indices(method)
-        resolved_positional_params = utils.unescape_vars(method, [
-            param if i in raw else self.resolve_param(param) for i, param in enumerate(positional_params)
-        ])
-        resolved_kw_params = {key: self.resolve_param(value) for key, value in kw_params.items()}
-        return resolved_positional_params, resolved_kw_params
 
     def execute_test_case(self, test_case: str) -> Optional[TestCaseResult]:
         """Empty implementation to satisfy the interface contract.
@@ -207,19 +196,6 @@ def heal_extra(heal: dict[str, Any], steps: list[dict[str, Any]]) -> dict[str, s
         "heal_summary": heal["summary"],
         "heal_steps": json.dumps(mask_secret_values(steps)),
     }
-
-
-def bind_params(name: str, method: Callable, positional: List[Any], keywords: Dict[str, Any]) -> None:
-    """Refuse params the keyword cannot take, before it runs, instead of a TypeError from inside it."""
-    signature = readable_signature(method)
-    if signature is None:
-        return
-    try:
-        signature.bind(*positional, **keywords)
-    except TypeError as e:
-        raise OpticsError(
-            Code.E0403, message=f"{name} cannot take these params: {e}", hint=f"Run 'optics list {name}' to see its params."
-        ) from e
 
 
 def popup_event(popup: dict, session_id: str, keyword: str, keyword_id: str, module_id: str, **context: Any) -> Event:
@@ -627,7 +603,7 @@ class TestRunner(Runner):
         store_as=None,
     ):
         def attempt(candidate_args):
-            positional, keywords = self._resolve_candidate_params(method, candidate_args)
+            positional, keywords = step_arguments(method, candidate_args, self.elements)
             bind_params(keyword_node.name, method, positional, keywords)
             return utils.call_and_store(self.elements, method, positional, keywords, store_as)[1]
 
@@ -1058,7 +1034,7 @@ class TestRunner(Runner):
 
     def _check_params(self, name: str, method: Callable, params: List[str]) -> None:
         """Bind the params as a run would, so a step that cannot run fails in dry_run too."""
-        positional, keywords = self._resolve_candidate_params(method, params)
+        positional, keywords = step_arguments(method, params, self.elements)
         bind_params(name, method, positional, keywords)
 
     async def _dry_run_module(
@@ -1354,7 +1330,7 @@ class PytestRunner(Runner):
 
     def _try_execute_with_fallback_pytest(self, method, param_candidates, keyword, keyword_id, module_id, store_as=None):
         def attempt(candidate_args):
-            positional, keywords = self._resolve_candidate_params(method, candidate_args)
+            positional, keywords = step_arguments(method, candidate_args, self.elements)
             bind_params(keyword, method, positional, keywords)
             return utils.call_and_store(self.elements, method, positional, keywords, store_as)[1]
 

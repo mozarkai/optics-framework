@@ -5,17 +5,19 @@ import re
 import inspect
 from abc import ABC, abstractmethod
 from functools import lru_cache
-from typing import Callable, Optional, Dict, Set, Union, List, Tuple, cast
+from typing import Any, Callable, Iterable, Optional, Dict, Set, Union, List, Tuple, cast
 from optics_framework.common.config_handler import load_project_yaml
-from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.error import Code, OpticsError, undefined_element
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.models import (
     ApiData,
     ApiDefinition,
+    ElementData,
     ExpectedResultDefinition,
     PopupRule,
     parse_popup_rules,
 )
+from optics_framework.common import test_context, utils
 from optics_framework.common.utils import unescape_csv_value
 
 
@@ -106,6 +108,53 @@ def readable_signature(method: Callable) -> Optional[inspect.Signature]:
         return inspect.signature(method)
     except (TypeError, ValueError):
         return None
+
+
+def bind_params(name: str, method: Callable, positional: List[Any], keywords: Dict[str, Any]) -> None:
+    """Refuse params the keyword cannot take, before it runs, instead of a TypeError from inside it."""
+    signature = readable_signature(method)
+    if signature is None:
+        return
+    try:
+        signature.bind(*positional, **keywords)
+    except TypeError as e:
+        raise OpticsError(
+            Code.E0403, message=f"{name} cannot take these params: {e}", hint=f"Run 'optics list {name}' to see its params."
+        ) from e
+
+
+def step_candidates(method: Callable, params: List[Any], elements: ElementData) -> List[List[Any]]:
+    """Each param's values for the fallback ladder: every value of a whole ``${name}`` param, else the param itself."""
+    raw = utils.raw_param_indices(method)
+    candidates = []
+    for i, param in enumerate(params):
+        name = None if i in raw else utils.whole_var_name(param)
+        values = [param] if name is None else elements.get_element(name)
+        if not values:
+            raise undefined_element(str(name))
+        candidates.append(list(values))
+    test_context.name_locators(params, elements.get_element)
+    return candidates
+
+
+def step_arguments(method: Callable, combo: Iterable[Any], elements: ElementData) -> Tuple[List[Any], Dict[str, Any]]:
+    """One combination's positional and named args, split by the keyword's signature, with ``${name}`` resolved."""
+    def resolve(param: Any) -> Any:
+        name = utils.whole_var_name(param)
+        if name is None:
+            return param
+        value = elements.get_first(name)
+        if value is None:
+            raise undefined_element(name)
+        return value
+
+    params = utils.substitute_inline(method, list(combo), elements)
+    positional, named = DataReader.split_params_by_signature(method, params)
+    raw = utils.raw_param_indices(method)
+    signature = readable_signature(method)
+    raw_names = {p.name for i, p in enumerate(signature.parameters.values()) if i in raw} if signature else set()
+    args = utils.unescape_vars(method, [p if i in raw else resolve(p) for i, p in enumerate(positional)])
+    return args, {key: value if key in raw_names else resolve(value) for key, value in named.items()}
 
 
 def _arity(method) -> Optional[int]:
@@ -379,6 +428,38 @@ class DataReader(ABC):
         pass
 
 
+def csv_rows(lines: Iterable[str]) -> list:
+    """The rows of CSV text, keyed by lower-cased headers, with a short row's missing cells empty."""
+    reader = csv.DictReader(lines, restval="")
+    reader.fieldnames = [h.strip().lower() for h in reader.fieldnames or []]
+    return list(reader)
+
+
+def modules_from_rows(rows: list) -> dict:
+    """Module name to its (module_step, params) steps, from ``module_name,module_step,param_n`` rows."""
+    modules: dict = {}
+    for row in rows:
+        if "module_name" not in row or not row["module_name"]:
+            internal_logger.warning(f"Warning: Row missing 'module_name': {row}")
+            continue
+        if "module_step" not in row or not row["module_step"]:
+            internal_logger.warning(f"Warning: Row missing 'module_step': {row}")
+            continue
+        params = [
+            unescape_csv_value(str(row[key]).strip())
+            for key in row
+            if key is not None
+            if key.startswith("param_") and row[key] and str(row[key]).strip()
+        ]
+        modules.setdefault(row["module_name"].strip(), []).append((row["module_step"].strip(), params))
+    return modules
+
+
+def elements_from_rows(rows: list) -> dict:
+    """Element name to its locators, in fallback order, from ``Element_Name,Element_ID`` rows."""
+    return {name: ids for name, ids in named_locators(rows).items() if ids}
+
+
 class CSVDataReader(DataReader):
     """Concrete implementation of DataReader for CSV files."""
 
@@ -392,9 +473,7 @@ class CSVDataReader(DataReader):
         :rtype: list
         """
         with open(file_path, "r", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            reader.fieldnames = [h.strip().lower() for h in reader.fieldnames or []]
-            return list(reader)
+            return csv_rows(f)
 
     def read_test_cases(self, file_path: str) -> dict:
         """
@@ -432,27 +511,7 @@ class CSVDataReader(DataReader):
         :return: A dictionary where keys are module names and values are lists of (module_step, params) tuples.
         :rtype: dict
         """
-        rows = self.read_file(file_path)
-        modules = {}
-        for row in rows:
-            if "module_name" not in row or not row["module_name"]:
-                internal_logger.warning(f"Warning: Row missing 'module_name': {row}")
-                continue
-            if "module_step" not in row or not row["module_step"]:
-                internal_logger.warning(f"Warning: Row missing 'module_step': {row}")
-                continue
-            module_name = row["module_name"].strip()
-            keyword = row["module_step"].strip()
-            params = [
-                unescape_csv_value(str(row[key]).strip())
-                for key in row
-                if key is not None
-                if key.startswith("param_") and row[key] and str(row[key]).strip()
-            ]
-            if module_name not in modules:
-                modules[module_name] = []
-            modules[module_name].append((keyword, params))
-        return modules
+        return modules_from_rows(self.read_file(file_path))
 
     def read_module_names(self, file_path: str) -> Set[str]:
         """Read only the module_name column, so the project-wide names pass neither parses
@@ -475,7 +534,7 @@ class CSVDataReader(DataReader):
         """
         if not file_path:
             return {}
-        return {name: ids for name, ids in named_locators(self.read_file(file_path)).items() if ids}
+        return elements_from_rows(self.read_file(file_path))
 
     def read_error_definitions(self, file_path: str) -> dict:
         """Read error_code, match_string, description, severity columns from a CSV file.
