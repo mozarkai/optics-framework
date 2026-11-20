@@ -59,6 +59,7 @@ from optics_framework.common.Junit_eventhandler import get_junit_handler_registr
 from optics_framework.common.session_liveness import is_dead_session_error
 from optics_framework.common.error_detection import (
     ON_SCREEN_ERROR_CASE,
+    describe_detected_error,
     extract_visible_text,
     detect_errors_in_text,
 )
@@ -709,7 +710,7 @@ class TestRunner(Runner):
             if hasattr(driver, attr)
         )
 
-    def _capture_end_of_run_artifacts(self) -> None:
+    async def _capture_end_of_run_artifacts(self) -> None:
         if not self._screen_readable():
             internal_logger.debug(
                 "End-of-run artifact capture skipped: driver session unavailable."
@@ -721,7 +722,7 @@ class TestRunner(Runner):
             if config.capture_dir is not None:
                 self._save_end_of_run_screenshot(strategy_manager, config.capture_dir)
             page_source, timestamp = self._save_end_of_run_pagesource(strategy_manager, config.capture_dir)
-            self._run_end_of_run_detection(page_source, timestamp, config.execution_output_path)
+            await self._run_end_of_run_detection(page_source, timestamp, config.execution_output_path)
         except Exception as e:
             internal_logger.warning("End-of-run artifact capture failed: %s", e)
 
@@ -771,7 +772,7 @@ class TestRunner(Runner):
             internal_logger.warning("End-of-run page source skipped: %s", e)
             return None, None
 
-    def _run_end_of_run_detection(
+    async def _run_end_of_run_detection(
         self, page_source: Optional[str], timestamp: Optional[str], output_dir: str
     ) -> None:
         try:
@@ -799,6 +800,10 @@ class TestRunner(Runner):
             handler = get_junit_handler_registry().get_handler(self.session_id)
             if handler:
                 handler.add_detected_errors(self.session_id, matched)
+            await self._send_event(
+                "test_case", TestCaseNode(name=ON_SCREEN_ERROR_CASE, id=detection.id), EventStatus.FAIL,
+                reason="; ".join(describe_detected_error(m) for m in matched),
+            )
         except Exception as e:
             internal_logger.warning("Error detection scan failed: %s", e)
 
@@ -1139,7 +1144,7 @@ class TestRunner(Runner):
             while current:
                 # The suite teardown may close the app, so the final screen is read before it.
                 if current.kind is CaseKind.SUITE_TEARDOWN:
-                    self._capture_end_of_run_artifacts()
+                    await self._capture_end_of_run_artifacts()
                     captured = True
                 skip = guard.reason(current.kind)
                 if skip is not None:
@@ -1151,7 +1156,7 @@ class TestRunner(Runner):
                         guard.stop(f"Run stopped by a popup: {self.popup_run.stop}")
                 current = current.next
             if not captured:
-                self._capture_end_of_run_artifacts()
+                await self._capture_end_of_run_artifacts()
         finally:
             test_context.popup_run.reset(popup_binding)
             self._write_failed_steps_elements()
