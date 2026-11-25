@@ -4,18 +4,13 @@ import io
 import json
 import os
 from importlib.metadata import PackageNotFoundError
-from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 from rich.console import Console
 
 from optics_framework.helper import doctor, project_config
-from tests.conftest import set_home
 from optics_framework.helper.doctor import Check
-
-
-MODULE = "optics_framework.helper.doctor"
+from tests.conftest import set_home
 
 # The real header `adb devices` prints. Tests must quote adb verbatim —
 # paraphrasing it here is exactly how the header-matching bug slipped through.
@@ -58,12 +53,11 @@ elements_sources:
 """
 
 
-def _render(func, *args, **kwargs):
+def _render(monkeypatch, func, *args, **kwargs):
     """Run a reporting function with a buffered console; returns (result, text)."""
     buf = io.StringIO()
-    with patch(f"{MODULE}._console", Console(file=buf, width=200)):
-        result = func(*args, **kwargs)
-    return result, buf.getvalue()
+    monkeypatch.setattr(doctor, "_console", Console(file=buf, width=200))
+    return func(*args, **kwargs), buf.getvalue()
 
 
 def _write_config(tmp_path, answers=None, raw=None) -> str:
@@ -91,38 +85,41 @@ def no_socket(monkeypatch):
     monkeypatch.setattr(doctor.socket, "create_connection", refuse)
 
 
+@pytest.fixture
+def machine(tools, tmp_path, monkeypatch, no_socket):
+    """A machine with no Appium server, no Playwright browser download and no device tools on PATH."""
+    set_home(monkeypatch, tmp_path)
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "browsers"))
+    tools(installed=False)
+    return tools
+
+
 class TestCheckMobile:
+    @pytest.mark.parametrize(("adb_says", "status", "detail"), [
+        (f"{ADB_HEADER}\n\n", "warn", "no devices attached"),
+        (f"{ADB_HEADER}\nemulator-5554\tdevice\nR58M\toffline\n", "ok", "1 connected: emulator-5554"),
+        ("* daemon not running; starting now at tcp:5037\n", "warn", "unexpected adb output: * daemon not running"),
+    ])
+    def test_the_devices_adb_lists(self, machine, adb_says, status, detail):
+        ran = machine(adb_says)
+        row = next(r for r in doctor.check_mobile() if r.name == "adb devices")
+        assert (row.status, row.detail[:len(detail)]) == (status, detail)
+        assert ran() == ["adb devices"]
 
-    def test_no_devices_warns(self, no_socket, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/bin/adb")
-        stub = SimpleNamespace(stdout=f"{ADB_HEADER}\n\n")
-        with patch.object(doctor.subprocess, "run", return_value=stub), \
-                patch.object(doctor.socket, "create_connection"):
-            rows = doctor.check_mobile()
-        row = next(r for r in rows if r.name == "adb devices")
-        assert row.status == "warn"
-        assert "no devices attached" in row.detail
 
-
+@pytest.mark.usefixtures("machine")
 class TestCheckWeb:
-    @pytest.fixture(autouse=True)
-    def isolated_home(self, monkeypatch, tmp_path):
-        set_home(monkeypatch, tmp_path)
-        self.home = tmp_path
-
     def test_uninstalled_packages_warn(self, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
-        with patch(f"{MODULE}.version", side_effect=PackageNotFoundError):
-            rows = doctor.check_web()
+        def not_installed(package):
+            raise PackageNotFoundError(package)
+        monkeypatch.setattr(doctor, "version", not_installed)
+        rows = doctor.check_web()
         assert all(r.status == "warn" for r in rows)
-        hints = {r.hint for r in rows}
-        assert any("optics setup --install playwright" in h for h in hints)
+        assert any("optics setup --install playwright" in r.hint for r in rows)
 
     def test_playwright_without_browser_download_warns(self, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
-        with patch(f"{MODULE}.version", return_value="1.49.0"):
-            rows = doctor.check_web()
-        pw = next(r for r in rows if r.name == "playwright browser")
+        monkeypatch.setattr(doctor, "version", lambda _package: "1.49.0")
+        pw = next(r for r in doctor.check_web() if r.name == "playwright browser")
         assert pw.status == "warn"
         assert "playwright install chromium" in pw.hint
 
@@ -155,15 +152,13 @@ class TestCheckDesktop:
 
     def test_macos_row_is_an_info_mark_outside_the_counts(self, no_socket, monkeypatch):
         monkeypatch.setattr(doctor, "_glyphs", lambda: doctor._EMOJI_GLYPHS)
-        _, out = _render(doctor.print_report, [("Desktop", [Check("xa11y driver", "ok", "found"),
+        _, out = _render(monkeypatch, doctor.print_report, [("Desktop", [Check("xa11y driver", "ok", "found"),
                                                             *doctor.check_desktop(system="Darwin")[2:]])], [])
         assert "ℹ️ macOS permissions" in out
         assert "1 ok, 0 warning(s), 0 failure(s)" in out
 
 
 class TestValidateProject:
-
-
     def test_ios_settings_row_ok_with_bundle_id(self, tmp_path):
         folder = _write_config(tmp_path, answers=IOS_ANSWERS)
         rows = doctor.validate_project(folder)
@@ -183,59 +178,20 @@ class TestValidateProject:
         assert any(r.status == "fail" for r in rows)
 
 
-def _stub_env_rows():
-    return [Check("python", "ok", "3.12.1"),
-            Check("Appium", "warn", "not installed", "optics setup --install appium")]
-
-
+@pytest.mark.usefixtures("machine")
 class TestRunDoctor:
-    @pytest.fixture
-    def quiet_env(self, monkeypatch):
-        monkeypatch.setattr(doctor, "check_core", _stub_env_rows)
-        monkeypatch.setattr(doctor, "check_engines", lambda: [])
-        monkeypatch.setattr(doctor, "check_web", lambda *_: [])
-        captured = {}
-        def fake_check_mobile(host="127.0.0.1", port=4723):
-            captured["target"] = (host, port)
-            return [Check("appium server", "warn", f"{host}:{port}")]
-        monkeypatch.setattr(doctor, "check_mobile", fake_check_mobile)
-        monkeypatch.setattr(doctor, "check_desktop", lambda *_: [])
-        return captured
-
-    def test_zero_when_environment_has_only_warnings(self, quiet_env):
-        code, out = _render(doctor.run_doctor)
+    def test_environment_gaps_are_warnings(self, monkeypatch):
+        code, out = _render(monkeypatch, doctor.run_doctor, check=True)
         assert code == 0
-        assert "⚠️" in out
+        assert "not found on PATH" in out
 
-    def test_check_false_always_returns_zero(self, quiet_env, monkeypatch):
-        monkeypatch.setattr(
-            doctor, "validate_project",
-            lambda _f: [Check("config: driver", "fail", "no driver enabled")])
-        code, _ = _render(doctor.run_doctor, "/some/project")
-        assert code == 0
+    @pytest.mark.parametrize(("check", "code"), [(False, 0), (True, 1)])
+    def test_a_project_that_fails_its_checks(self, tmp_path, monkeypatch, check, code):
+        folder = _write_config(tmp_path, raw="driver_sources: [oops\n")
+        assert _render(monkeypatch, doctor.run_doctor, folder, check=check)[0] == code
 
-
-class TestGatedClosingMessage:
-    APPIUM_HINT = "Start it in another terminal with the `appium` command."
-    DEVICE_HINT = "Connect a device or start an emulator (USB debugging on)."
-    ADB_HINT = "Install Android platform-tools (needed to drive Android devices)."
-    SELENIUM_HINT = "Install a browser with a matching driver (e.g. chromedriver)."
-    PLAYWRIGHT_HINT = ("playwright install chromium  "
-                       "(or: optics setup --install playwright)")
-
-    def _run_with_rows(self, tmp_path, *, env_rows, web_rows=None,
-                       answers=None, desktop_rows=()):
-        folder = _write_config(tmp_path, answers=answers)
-        web = web_rows if web_rows is not None else []
-        with patch(f"{MODULE}.check_core",
-                   return_value=[Check("python", "ok", "3.12")]), \
-                patch(f"{MODULE}.check_engines", return_value=[]), \
-                patch(f"{MODULE}.check_web", return_value=web), \
-                patch(f"{MODULE}.check_mobile", return_value=env_rows), \
-                patch(f"{MODULE}.check_desktop", return_value=list(desktop_rows)):
-            return _render(doctor.run_doctor, folder)
-
-    def test_missing_xa11y_driver_does_not_block_an_android_project(self, tmp_path, no_socket, monkeypatch):
-        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/local/bin/appium")
-        _, out = self._run_with_rows(tmp_path, env_rows=[], desktop_rows=doctor.check_desktop(system="Linux"))
-        assert XA11Y_INSTALL not in out.split("Before your first real run:")[1]
+    def test_a_missing_xa11y_driver_does_not_block_an_android_project(self, tmp_path, monkeypatch):
+        _, out = _render(monkeypatch, doctor.run_doctor, _write_config(tmp_path))
+        closing = out.split("Before your first real run:")[1]
+        assert "Install Android platform-tools" in closing
+        assert XA11Y_INSTALL not in closing
