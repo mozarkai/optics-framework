@@ -129,6 +129,8 @@ class Capabilities(BaseModel):
 
     serial: Optional[str] = None
     port: Optional[str] = None
+    # The paired device to drive, by its Bluetooth name or address; the dongle drops any other one's link.
+    host: Optional[str] = None
     platform: Literal["android", "ios", "macos", "windows", "linux"]
     frame: Frame
     # Some Android launchers start an app search only from a tap on their search box.
@@ -213,6 +215,20 @@ class BLEDriver(DriverInterface):
         except ValueError as exc:
             raise OpticsError(Code.E0503, message=f"{exc} in capabilities.serial") from exc
         internal_logger.info(f"ble dongle ready: {self._dongle.identity}")
+        if self.capabilities.host:
+            try:
+                self._use_host(self.capabilities.host)
+            except BaseException:
+                self._dongle.close()
+                raise
+
+    def _use_host(self, host: str) -> None:
+        with _mapped():
+            try:
+                chosen = self._dongle.use(host)
+            except (airhand.Refused, airhand.HostUnavailable) as exc:
+                raise OpticsError(Code.E0501, message=f"capabilities.host '{host}'", cause=exc) from exc
+        internal_logger.info(f"ble host: {chosen.name or chosen.address}")
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:

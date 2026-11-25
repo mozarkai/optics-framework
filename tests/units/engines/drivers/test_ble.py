@@ -51,6 +51,28 @@ def make_driver(fake: FakeDongle, platform="android", **caps) -> BLEDriver:
     return BLEDriver(config={"capabilities": capabilities}, event_sdk=Events())
 
 
+PAIRED = [("20:32:C6:02:7B:47", "iPhone"), ("78:ED:BC:25:5A:24", "OnePlus 15")]
+
+
+def test_the_driver_takes_the_link_for_the_host_it_names(plugged):
+    fake = plugged(firmware="airhand 0.1.6", hosts=PAIRED)
+    make_driver(fake, host="oneplus 15")
+    assert ("use", "78:ED:BC:25:5A:24") in fake.commands
+
+
+@pytest.mark.parametrize(
+    ("firmware", "host", "says"),
+    [("airhand 0.1.6", "Galaxy", "iPhone (20:32:C6:02:7B:47)"), ("airhand 0.1.5", "iPhone", "airhand update")],
+)
+def test_a_host_the_dongle_cannot_choose_stops_the_session(plugged, firmware, host, says):
+    fake = plugged(firmware=firmware, hosts=PAIRED)
+    with pytest.raises(OpticsError) as stopped:
+        make_driver(fake, host=host)
+    assert stopped.value.code == Code.E0501
+    assert says in str(stopped.value)
+    assert not any(words[0] == "use" and words[1] != "any" for words in fake.commands if len(words) > 1)
+
+
 def test_a_short_swipe_is_sent_fast_enough_to_drag(plugged):
     fake = plugged()
     make_driver(fake, "ios").swipe_percentage(50, 60, "up", 20)
