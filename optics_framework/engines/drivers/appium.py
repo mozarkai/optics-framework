@@ -229,6 +229,8 @@ class _QueryForwardingConnection(AppiumConnection):
 
 _MISSING_DRIVER = re.compile(r"Could not find a driver for automationName '([^']*)'")
 _APP_HINT = "Make sure that the app is installed on the device and that its package name or bundle id is correct."
+_APP_IN_FOREGROUND = 4  # Appium's query_app_state answer for an app on screen
+_FOREGROUND_WAIT_S = 3.0
 
 
 def _command_executor_and_config(
@@ -1478,8 +1480,24 @@ class Appium(DriverInterface):
     def _activate_app(self, driver: WebDriver, app_id: str) -> None:
         if not self._is_desktop():
             driver.activate_app(app_id)
+            self._require_foreground(driver, app_id)
             return
         self._app_command(driver, "activate_app", app_id)
+
+    @staticmethod
+    def _require_foreground(driver: WebDriver, app_id: str) -> None:
+        """Some devices answer an activate command with success and leave the app unopened."""
+        deadline = time.monotonic() + _FOREGROUND_WAIT_S
+        while True:
+            try:
+                state = driver.query_app_state(app_id)
+            except Exception:  # a driver that cannot report the state leaves the launch unchecked
+                return
+            if not isinstance(state, int) or state == _APP_IN_FOREGROUND:
+                return
+            if time.monotonic() >= deadline:
+                raise OpticsError(Code.E0401, message=f"{app_id} did not come to the foreground.", hint=_APP_HINT)
+            time.sleep(0.25)
 
     @staticmethod
     def _app_command(driver: WebDriver, route: str, app_id: str) -> None:
