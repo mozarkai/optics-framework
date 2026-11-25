@@ -8,7 +8,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from collections.abc import Callable, Iterator, Sequence
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from lxml import etree  # type: ignore
 from urllib.parse import urlsplit, urlunsplit
 from appium import webdriver
@@ -1407,7 +1407,7 @@ class Appium(DriverInterface):
 
     @_on_tv
     @supported_on(*POINTER)
-    def enter_text_element(self, element: Any, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
+    def enter_text_element(self, element: Any, text: str | SpecialKey, event_name: Optional[str] = None) -> None:
         if event_name:
             self.event_sdk.capture_event(event_name)
 
@@ -1585,7 +1585,7 @@ class Appium(DriverInterface):
             time.sleep(_POLL_S)
 
     @supported_on(*POINTER)
-    def enter_text(self, text: Union[str, SpecialKey], event_name: Optional[str] = None) -> None:
+    def enter_text(self, text: str | SpecialKey, event_name: Optional[str] = None) -> None:
         driver = self._require_driver()
         if event_name:
             self.event_sdk.capture_event(event_name)
@@ -1694,7 +1694,7 @@ class Appium(DriverInterface):
     @supported_on(*POINTER)
     def enter_text_using_keyboard(
         self,
-        text: Union[str, SpecialKey],
+        text: str | SpecialKey,
         event_name: Optional[str] = None
     ) -> None:
         driver = self._require_driver()

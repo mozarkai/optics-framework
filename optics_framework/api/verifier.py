@@ -1,5 +1,5 @@
 import time
-from typing import Callable, Optional, Any, List, Tuple, Union
+from typing import Callable, Optional, Any, List, Tuple
 
 from optics_framework.common.error import ElementNotFound, OpticsError, Code, is_element_not_found
 from optics_framework.common.logging_config import SENSITIVE_PREFIX, internal_logger, mask_secrets
@@ -230,7 +230,7 @@ class Verifier:
             self.event_sdk.capture_event(event_name)
         return True
 
-    def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
+    def assert_presence(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: bool | str = True) -> bool:
         """
         Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
 
@@ -246,7 +246,7 @@ class Verifier:
         return self._popup_step("assert_presence", elements, lambda: self._assert_common(
             elements, seconds, rule, event_name, fail, method_name="assert_presence"))
 
-    def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: Union[bool, str] = True) -> bool:
+    def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: bool | str = True) -> bool:
         """
         Asserts that elements are actually rendered/visible on screen right now -- distinct
         from :meth:`assert_presence`, which reports found even for elements that exist in
@@ -266,7 +266,7 @@ class Verifier:
 
     def _assert_common(
         self, elements: str, timeout: int, rule: str,
-        event_name: Optional[str], fail: Union[bool, str], method_name: str,
+        event_name: Optional[str], fail: bool | str, method_name: str,
     ) -> bool:
         fail = str(fail).strip().lower() != "false"
         elements_list = elements.split('|')

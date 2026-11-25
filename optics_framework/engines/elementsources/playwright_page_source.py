@@ -504,6 +504,17 @@ class WebDomInspector:
         attrs = node.attrib or {}
         return "disabled" in attrs or (attrs.get("aria-disabled") or "").lower() == "true"
 
+    @staticmethod
+    def _is_web_text_input(tag: str, attrs: Any, role: str) -> bool:
+        input_type = (attrs.get("type") or "").lower()
+        contenteditable = attrs.get("contenteditable")
+        return (
+            (tag == "input" and (not input_type or input_type in WEB_TEXT_INPUT_TYPES))
+            or tag == "textarea"
+            or (contenteditable is not None and contenteditable.lower() != "false")
+            or role in WEB_TEXT_INPUT_ROLES
+        )
+
     def _web_element_actions(self, node: etree.Element) -> List[str]:
         """Interactions a web node affords: tap/toggle/input (empty => none).
 
@@ -515,14 +526,7 @@ class WebDomInspector:
         tag = (node.tag or "").lower()
         attrs = node.attrib or {}
         role = (attrs.get("role") or "").lower()
-        input_type = (attrs.get("type") or "").lower()
-        contenteditable = attrs.get("contenteditable")
-        text_input = (
-            (tag == "input" and (not input_type or input_type in WEB_TEXT_INPUT_TYPES))
-            or tag == "textarea"
-            or (contenteditable is not None and contenteditable.lower() != "false")
-            or role in WEB_TEXT_INPUT_ROLES
-        )
+        text_input = self._is_web_text_input(tag, attrs, role)
         clickable = (
             tag in WEB_TAP_TAGS
             or (tag == "a" and attrs.get("href"))

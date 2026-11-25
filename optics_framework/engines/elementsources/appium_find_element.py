@@ -126,14 +126,7 @@ class AppiumFindElement(ElementSourceInterface):
         if element_type == 'Image':
             return None
         elif element_type == 'XPath':
-            try:
-                found_element = driver.find_element(AppiumBy.XPATH, utils.without_prefix(element, utils.XPATH_PREFIX))
-                if not found_element:
-                    return None
-                return found_element
-            except (AttributeError, TypeError) as e:
-                internal_logger.error('Error finding element: %s', element, exc_info=True)
-                raise ElementNotFound(element, cause=e) from e
+            return self._locate_xpath(driver, element)
         elif element_type in ('Text', 'Class') or (element_type == 'CSS' and self._web_ui()):
             by, value = self._query(element, element_type)
             position = 0 if index is None else index
@@ -148,6 +141,14 @@ class AppiumFindElement(ElementSourceInterface):
                 raise ElementNotFound(element)
             return found_element
         return None
+
+    def _locate_xpath(self, driver: Any, element: str) -> Any:
+        try:
+            found_element = driver.find_element(AppiumBy.XPATH, utils.without_prefix(element, utils.XPATH_PREFIX))
+        except (AttributeError, TypeError) as e:
+            internal_logger.error('Error finding element: %s', element, exc_info=True)
+            raise ElementNotFound(element, cause=e) from e
+        return found_element or None
 
     def count(self, element: str) -> Optional[int]:
         element_type = utils.determine_element_type(element)

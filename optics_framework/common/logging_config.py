@@ -64,7 +64,7 @@ class LoggingManager:
                     try:
                         listener.enqueue_sentinel()
                     except Exception as e:
-                        self.internal_logger.error(
+                        self.internal_logger.exception(
                             f"Failed to enqueue sentinel for listener: {e}"
                         )
                     thread.join(timeout=2.0)
@@ -82,7 +82,7 @@ class LoggingManager:
             self.stop_listeners()
             self.internal_logger.debug("Logging shutdown completed")
         except Exception as e:
-            self.internal_logger.error(f"Shutdown error: {e}")
+            self.internal_logger.exception(f"Shutdown error: {e}")
 
     def disable_logger(self):
         logging.getLogger().disabled = True
@@ -246,15 +246,13 @@ _held_records: ContextVar[list | None] = ContextVar("_held_records", default=Non
 @contextmanager
 def holding_logs_for_secret(name: str | None):
     """Get Text logs what it read before store_as registers it; hold those lines until then."""
-    if not is_secret_name(name):
-        yield
-        return
     held: list[logging.LogRecord] = []
-    token = _held_records.set(held)
+    token = _held_records.set(held) if is_secret_name(name) else None
     try:
         yield
     finally:
-        _held_records.reset(token)
+        if token is not None:
+            _held_records.reset(token)
         for record in held:
             logging.getLogger(record.name).handle(record)
 
@@ -380,7 +378,7 @@ def shutdown_logging():
         clear_queues()
         internal_logger.debug("Logging shutdown completed")
     except Exception as e:
-        internal_logger.error(f"Shutdown error: {e}")
+        internal_logger.exception(f"Shutdown error: {e}")
 
 
 def disable_logger():
@@ -427,7 +425,7 @@ def flush_handlers():
     except ImportError as e:
         internal_logger.debug(f"Could not import JUnit handler registry: {e}")
     except Exception as e:
-        internal_logger.error(f"Error flushing JUnit handlers: {e}")
+        internal_logger.exception(f"Error flushing JUnit handlers: {e}")
 
 
 def clear_queues():

@@ -7,7 +7,6 @@ from typing import (
     Callable,
     TypeVar,
     cast,
-    Union,
     get_type_hints,
     ParamSpec,
 )
@@ -48,7 +47,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 Self = TypeVar("Self")
 
-fallback_str = Union[str, List[str]]
+fallback_str = str | List[str]
 
 try:
     from robot.api.deco import keyword, library  # type: ignore
@@ -229,7 +228,7 @@ class Optics:
     @keyword("Setup")
     def setup(
         self,
-        config: Union[str, Dict[str, Any], None] = None,
+        config: str | Dict[str, Any] | None = None,
         driver_sources: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         elements_sources: Optional[List[Dict[str, Dict[str, Any]]]] = None,
         image_detection: Optional[List[Dict[str, Dict[str, Any]]]] = None,
@@ -254,7 +253,7 @@ class Optics:
 
     def _extract_config_data(
         self,
-        config: Union[str, Dict[str, Any], None],
+        config: str | Dict[str, Any] | None,
         driver_sources: Optional[List[Dict[str, Dict[str, Any]]]],
         elements_sources: Optional[List[Dict[str, Dict[str, Any]]]],
         image_detection: Optional[List[Dict[str, Dict[str, Any]]]],
@@ -406,7 +405,7 @@ class Optics:
             raise ValueError(f"Session does not have an element '{name}' stored.")
 
     @keyword("Add API")
-    def add_api(self, api_data: Union[str, dict]) -> None:
+    def add_api(self, api_data: str | dict) -> None:
         """Add or update an API definition in the current session by fully replacing session.apis."""
         if not self.session_id or self.session_id not in self.session_manager.sessions:
             raise ValueError(INVALID_SETUP)
@@ -454,7 +453,7 @@ class Optics:
     @keyword("Add Error Definitions")
     def add_error_definitions(
         self,
-        source: Union[Dict[str, Dict[str, str]], ErrorDefinitions],
+        source: Dict[str, Dict[str, str]] | ErrorDefinitions,
     ) -> None:
         """Load user-defined error strings onto the active session.
 

@@ -1,5 +1,5 @@
 import re
-from typing import Any, List, Dict, Tuple, Optional, Union, cast
+from typing import Any, List, Dict, Tuple, Optional, cast
 from fuzzywuzzy import fuzz
 from lxml import etree
 from optics_framework.common.logging_config import internal_logger
@@ -262,7 +262,7 @@ class UIHelper:
                 continue
 
             # Add `//` only if the part starts with specific prefixes and doesn't already have `//`
-            if part.startswith("android.widget") or part.startswith("XCUIElementType"):
+            if part.startswith(("android.widget", "XCUIElementType")):
                 if simplified and simplified[-1].startswith("//"):
                     simplified.append(part)
                 else:
@@ -335,70 +335,66 @@ class UIHelper:
     def find_attribute_match(self, xpath):
         """Attempts matching by focusing on resource-id (fuzzy for prefix, exact or fuzzy for suffix)."""
         input_attributes = {
-            "resource-id": self.extract_attribute(xpath, "resource-id"),
-            "content-desc": self.extract_attribute(xpath, "content-desc"),
-            "text": self.extract_attribute(xpath, "text"),
-            "value": self.extract_attribute(xpath, "value"),
-            "name": self.extract_attribute(xpath, "name"),
-            "label": self.extract_attribute(xpath, "label"),
+            attr: value
+            for attr in ("resource-id", "content-desc", "text", "value", "name", "label")
+            if (value := self.extract_attribute(xpath, attr))
         }
-        # If no attributes are found, return None
-        if not any(input_attributes.values()):
+        if not input_attributes:
             return None
 
         best_match = None
         best_fuzzy_score = 0
 
-        # Ensure self.root is valid
         if not hasattr(self, "root") or self.root is None:
             internal_logger.error("Root element is not initialized.")
             return None
 
         for element in self.root.findall(".//*"):
-            if element is None:  # Safeguard against invalid elements
+            if element is None:
                 continue
+            score = self._element_match(element, input_attributes)
+            if score is True:
+                return self.simplify_xpath(element)
+            if score > best_fuzzy_score:
+                best_fuzzy_score = score
+                best_match = element
 
-            for attr, input_value in input_attributes.items():
-                if not input_value:
-                    continue
-
-                elem_value = element.get(attr)
-                if not elem_value:
-                    continue
-
-                # Handle splitting logic for attributes with `/`
-                input_prefix, input_suffix = self.split_element(input_value)
-                elem_prefix, elem_suffix = self.split_element(elem_value)
-
-                # Check exact match first
-                if input_value == elem_value:
-                    internal_logger.debug(f"Exact match found for {attr}: {elem_value}")
-                    return self.simplify_xpath(element)
-
-                # Fuzzy match logic
-                if self.fuzzy_match_prefix(input_prefix, elem_prefix):
-                    if input_suffix == elem_suffix:
-                        internal_logger.debug(
-                            f"Attribute match found for {attr} with exact suffix match: {elem_value}"
-                        )
-                        return self.simplify_xpath(element)
-
-                    # Fuzzy match on suffix if exact match fails
-                    suffix_score = fuzz.ratio(input_suffix or "", elem_suffix or "")
-                    if suffix_score > best_fuzzy_score:
-                        best_fuzzy_score = suffix_score
-                        best_match = element
-
-        # Handle best fuzzy match
-        if best_fuzzy_score >= 70:  # Threshold for fuzzy match acceptance
+        if best_fuzzy_score >= 70:
             internal_logger.debug(
                 f"Fuzzy match found with score {best_fuzzy_score}, element: {best_match}"
             )
             return self.simplify_xpath(best_match)
 
-        # No match found
         internal_logger.debug("No match found using attribute matching.")
         return None
+
+    def _element_match(self, element, input_attributes):
+        """True when one attribute matches, else the best suffix score among the attributes."""
+        best = 0
+        for attr, input_value in input_attributes.items():
+            elem_value = element.get(attr)
+            if not elem_value:
+                continue
+            match = self._attribute_match(attr, input_value, elem_value)
+            if match is True:
+                return True
+            if match is not None and match > best:
+                best = match
+        return best
+
+    def _attribute_match(self, attr, input_value, elem_value):
+        """True for a match to take at once, the suffix score when only the prefixes are close, else None."""
+        if input_value == elem_value:
+            internal_logger.debug(f"Exact match found for {attr}: {elem_value}")
+            return True
+        input_prefix, input_suffix = self.split_element(input_value)
+        elem_prefix, elem_suffix = self.split_element(elem_value)
+        if not self.fuzzy_match_prefix(input_prefix, elem_prefix):
+            return None
+        if input_suffix == elem_suffix:
+            internal_logger.debug(f"Attribute match found for {attr} with exact suffix match: {elem_value}")
+            return True
+        return fuzz.ratio(input_suffix or "", elem_suffix or "")
 
     def split_element(self, element):
         """Splits an element into prefix and suffix."""
@@ -1134,7 +1130,7 @@ class UIHelper:
         self,
         node: etree.Element,
         index: XPathUniquenessIndex,
-        attrs: List[Union[str, Tuple[str, str]]],
+        attrs: List[str | Tuple[str, str]],
     ) -> Tuple[Optional[str], bool]:
         tag_for_xpath = node.tag or "*"
         is_pairs = bool(attrs and isinstance(attrs[0], tuple))
@@ -1360,7 +1356,7 @@ class UIHelper:
         if attrs.get("clickable") == "true":
             return True
         if attrs.get("enabled") == "true" and attrs.get("visible", "true") != "false":
-            if tag.startswith("XCUIElementTypeButton") or tag.startswith("android.widget.Button"):
+            if tag.startswith(("XCUIElementTypeButton", "android.widget.Button")):
                 return True
             if "ImageView" in tag or "XCUIElementTypeImage" in tag:
                 # Often icon buttons; your call whether to include

@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
 from collections.abc import Mapping
-from typing import Dict, List, Tuple, Optional, Union, Any, Iterator
+from typing import Dict, List, Tuple, Optional, Any, Iterator
 import logging
 import pandas as pd
 import json
@@ -153,7 +153,7 @@ logger = logging.getLogger(__name__)
 # Type aliases for clarity
 TestCases = Dict[str, List[str]]
 Modules = Dict[str, List[Tuple[str, List[str]]]]
-Elements = Dict[str, Union[str, List[str]]]
+Elements = Dict[str, str | List[str]]
 Config = Dict
 
 

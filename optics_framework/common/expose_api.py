@@ -12,7 +12,7 @@ import asyncio
 import warnings
 import hashlib
 from contextlib import asynccontextmanager
-from typing import Annotated, Literal, Optional, Dict, Any, List, Union, cast, Callable, Tuple, NamedTuple
+from typing import Annotated, Literal, Optional, Dict, Any, List, cast, Callable, Tuple, NamedTuple
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi import status
 from pydantic import BaseModel, ValidationError
@@ -46,8 +46,10 @@ session_manager = SessionManager()
 @asynccontextmanager
 async def _end_sessions_on_shutdown(_app: FastAPI):
     """Releases remote browsers and devices now instead of at their provider's idle timeout."""
-    yield
-    await asyncio.to_thread(session_manager.terminate_all)
+    try:
+        yield
+    finally:
+        await asyncio.to_thread(session_manager.terminate_all)
 
 
 app = FastAPI(title="Optics Framework API", version="1.0", lifespan=_end_sessions_on_shutdown)
@@ -58,6 +60,8 @@ workspace_hashes: Dict[str, str] = {}
 # --- API / HTTP messages ---
 SESSION_NOT_FOUND = "Session not found"
 MSG_ONLY_KEYWORD_MODE_SUPPORTED = "Only keyword mode with a keyword is supported"
+MSG_INVALID_KEYWORD_REQUEST = "Invalid mode, missing keyword, or invalid template image"
+MSG_KEYWORD_FAILED = "Keyword execution failed"
 MSG_INVALID_API_DATA = "Invalid api_data:"
 MSG_SESSION_CREATION_FAILED = "Session creation failed:"
 MSG_EXECUTION_FAILED = "Execution failed:"
@@ -141,7 +145,7 @@ class ExecuteRequest(BaseModel):
     mode: str
     test_case: Optional[str] = None
     keyword: Optional[str] = None
-    params: Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]] = []
+    params: List[str | List[str]] | Dict[str, str | List[str]] = []
     template_images: Optional[Dict[str, str]] = None
 
 
@@ -365,10 +369,10 @@ class SessionConfig(BaseModel):
     credentials ride the request body. See ``_resolve_self_heal_settings`` for their
     per-field precedence over the service-level env-var defaults.
     """
-    driver_sources: List[Union[str, Dict[str, Any]]] = []
-    elements_sources: List[Union[str, Dict[str, Any]]] = []
-    text_detection: List[Union[str, Dict[str, Any]]] = []
-    image_detection: List[Union[str, Dict[str, Any]]] = []
+    driver_sources: List[str | Dict[str, Any]] = []
+    elements_sources: List[str | Dict[str, Any]] = []
+    text_detection: List[str | Dict[str, Any]] = []
+    image_detection: List[str | Dict[str, Any]] = []
     ai_self_heal: Optional[bool] = None
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
@@ -382,7 +386,7 @@ class SessionConfig(BaseModel):
     permissions: Dict[str, Literal["allow", "deny"]] = {}  # Android only, applied as the session starts
     api_data: Optional[Dict[str, Any]] = None  # Inline API definitions only; file path not supported in REST
 
-    def _normalize_item(self, item: Union[str, Dict[str, Any]], top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
+    def _normalize_item(self, item: str | Dict[str, Any], top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
         """Normalize a single source item into {name: DependencyConfig}.
 
         - If item is a string, return {item: DependencyConfig(enabled=True)}.
@@ -463,7 +467,7 @@ def _extract_keywords_from_class(cls) -> List[KeywordInfo]:
     """Extract keyword info from a class."""
     keywords = []
     for meth_name, meth in inspect.getmembers(cls, predicate=inspect.isfunction):
-        if meth_name.startswith("_") or meth_name.startswith("test"):
+        if meth_name.startswith(("_", "test")):
             continue
         sig = inspect.signature(meth)
         params = _get_keyword_parameters(sig)
@@ -563,6 +567,7 @@ def _session_apis(config: SessionConfig) -> Optional[ApiData]:
     response_model=SessionResponse,
     responses={
         400: {"description": "Invalid API data in session config"},
+        404: {"description": "Session ended before the app launched"},
         500: {"description": "Session creation or app launch failed"},
     },
 )
@@ -639,7 +644,7 @@ async def create_session(config: SessionConfig):
         raise HTTPException(status_code=500, detail=f"{MSG_SESSION_CREATION_FAILED} {plain(e)}") from e
 
 
-def _normalize_param_value(name: str, val: Union[str, List[str]], is_list_param: bool = False) -> List[str]:
+def _normalize_param_value(name: str, val: str | List[str], is_list_param: bool = False) -> List[str]:
     """
     Normalize a parameter value to a list of strings.
     Similar to _normalize_fallback_values in optics.py.
@@ -731,7 +736,7 @@ def _safe_template_filename(name: str) -> str:
 
 
 def _build_named_param_context(
-    method: Callable[..., Any], params: Dict[str, Union[str, List[str]]]
+    method: Callable[..., Any], params: Dict[str, str | List[str]]
 ) -> _NamedParamsContext:
     """Normalize named params and build context for fallback combos."""
     sig = inspect.signature(method)
@@ -767,7 +772,7 @@ def _build_named_param_context(
 
 
 def _build_positional_normalized(
-    params: List[Union[str, List[str]]]
+    params: List[str | List[str]]
 ) -> List[List[str]]:
     """Normalize positional params to list-of-lists for fallback combos."""
     return [_normalize_param_value(f"param_{i}", p) for i, p in enumerate(params)]
@@ -837,9 +842,8 @@ async def _execute_keyword_with_fallback(
     engine: ExecutionEngine,
     session_id: str,
     keyword: str,
-    params: Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]],
+    params: List[str | List[str]] | Dict[str, str | List[str]],
     method: Callable[..., Any],
-    session: Session,
 ) -> Any:
     """Execute a keyword via ExecutionEngine, trying its params' fallback values as the CSV runner does."""
     if isinstance(params, dict):
@@ -863,12 +867,12 @@ async def _setup_request_template_overrides(
             safe_stem = _safe_template_filename(name)
         except ValueError as e:
             shutil.rmtree(temp_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            raise HTTPException(status_code=400, detail=str(e)) from e  # NOSONAR delete_session turns this into a 500
         try:
             raw = _decode_template_base64(b64_value)
         except (ValueError, OpticsError) as e:
             shutil.rmtree(temp_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}") from e
+            raise HTTPException(status_code=400, detail=f"{MSG_INVALID_BASE64_IMAGE} {e}") from e  # NOSONAR delete_session turns this into a 500
         path = os.path.join(temp_dir, f"{safe_stem}{TEMPLATE_EXT_PNG}")
         await asyncio.to_thread(_write_bytes_to_path, path, raw)
         session.request_template_overrides[name] = path
@@ -892,9 +896,9 @@ async def _handle_execution_failure(
 @app.post(
     "/v1/sessions/{session_id}/action",
     responses={
-        400: {"description": "Invalid mode, missing keyword, or invalid template image"},
-        404: {"description": "Session not found"},
-        500: {"description": "Keyword execution failed"},
+        400: {"description": MSG_INVALID_KEYWORD_REQUEST},
+        404: {"description": SESSION_NOT_FOUND},
+        500: {"description": MSG_KEYWORD_FAILED},
     },
 )
 async def execute_keyword(session_id: str, request: ExecuteRequest):
@@ -906,10 +910,10 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
     """
     session = session_manager.get_session(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)  # NOSONAR delete_session turns this into a 500
 
     if request.mode != MODE_KEYWORD or not request.keyword:
-        raise HTTPException(status_code=400, detail=MSG_ONLY_KEYWORD_MODE_SUPPORTED)
+        raise HTTPException(status_code=400, detail=MSG_ONLY_KEYWORD_MODE_SUPPORTED)  # NOSONAR delete_session turns this into a 500
     if isinstance(session.elements, ElementData):
         use_secrets(session.elements.secrets)
 
@@ -935,7 +939,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
         _reject_server_env_read(keyword_slug, request.params)
 
         result = await _execute_keyword_with_fallback(
-            engine, session_id, request.keyword, request.params, method, session
+            engine, session_id, request.keyword, request.params, method
         )
 
         await session.event_queue.put(ExecutionEvent(
@@ -967,7 +971,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
     "/v1/sessions/{session_id}/templates",
     responses={
         400: {"description": "Invalid base64 image data or unsafe template name"},
-        404: {"description": "Session not found"},
+        404: {"description": SESSION_NOT_FOUND},
     },
 )
 async def upload_template(session_id: str, body: TemplateUploadRequest):
@@ -1026,7 +1030,7 @@ def _read_session_modules(modules_csv: str, elements_csv: str) -> Tuple[Optional
     "/v1/sessions/{session_id}/modules",
     responses={
         400: {"description": "Modules or elements that cannot be read (E0501)"},
-        404: {"description": "Session not found"},
+        404: {"description": SESSION_NOT_FOUND},
     },
 )
 async def replace_session_modules(session_id: str, body: SessionModulesUpdate):
@@ -1051,7 +1055,7 @@ async def replace_session_modules(session_id: str, body: SessionModulesUpdate):
     "/v1/sessions/{session_id}/popup_rules",
     responses={
         400: {"description": "A rule list that cannot be read (E0501)"},
-        404: {"description": "Session not found"},
+        404: {"description": SESSION_NOT_FOUND},
     },
 )
 async def replace_popup_rules(session_id: str, body: PopupRulesUpdate):
@@ -1073,7 +1077,7 @@ async def replace_popup_rules(session_id: str, body: PopupRulesUpdate):
     "/v1/sessions/{session_id}/appium_settings",
     responses={
         400: {"description": "The session's driver cannot change Appium settings"},
-        404: {"description": "Session not found"},
+        404: {"description": SESSION_NOT_FOUND},
         500: {"description": "The device refused the settings"},
     },
 )
@@ -1101,7 +1105,7 @@ async def update_appium_settings(session_id: str, body: AppiumSettingsUpdate):
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         400: {"description": "Invalid API data format"},
-        404: {"description": "Session not found"},
+        404: {"description": SESSION_NOT_FOUND},
     },
 )
 async def add_session_api(session_id: str, body: Annotated[Dict[str, Any], Body(...)]):
@@ -1127,18 +1131,25 @@ async def add_session_api(session_id: str, body: Annotated[Dict[str, Any], Body(
 async def run_keyword_endpoint(
     session_id: str,
     keyword: str,
-    params: Optional[Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]]] = None
+    params: Optional[List[str | List[str]] | Dict[str, str | List[str]]] = None
 ) -> Any:
     """
     Helper to execute a keyword for a session using the execute_keyword endpoint.
     Supports both positional and named parameters with fallback support.
     """
-    safe_params: Union[List[Union[str, List[str]]], Dict[str, Union[str, List[str]]]] = params or []
+    safe_params: List[str | List[str]] | Dict[str, str | List[str]] = params or []
     request = ExecuteRequest(mode=MODE_KEYWORD, keyword=keyword, params=safe_params)
     return await execute_keyword(session_id, request)
 
 
-@app.get("/v1/sessions/{session_id}/screenshot")
+@app.get(
+    "/v1/sessions/{session_id}/screenshot",
+    responses={
+        400: {"description": MSG_INVALID_KEYWORD_REQUEST},
+        404: {"description": SESSION_NOT_FOUND},
+        500: {"description": MSG_KEYWORD_FAILED},
+    },
+)
 async def capture_screenshot(session_id: str):
     """
     Capture a screenshot in the specified session.
@@ -1146,7 +1157,14 @@ async def capture_screenshot(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "capture_screenshot")
 
-@app.get("/v1/sessions/{session_id}/driver-id")
+@app.get(
+    "/v1/sessions/{session_id}/driver-id",
+    responses={
+        400: {"description": MSG_INVALID_KEYWORD_REQUEST},
+        404: {"description": SESSION_NOT_FOUND},
+        500: {"description": MSG_KEYWORD_FAILED},
+    },
+)
 async def get_driver_session_id(session_id: str):
     """
     Get the underlying Driver session ID for this Optics session.
@@ -1156,7 +1174,7 @@ async def get_driver_session_id(session_id: str):
 
 @app.get(
     "/v1/sessions/{session_id}/variables",
-    responses={404: {"description": "Session not found"}},
+    responses={404: {"description": SESSION_NOT_FOUND}},
 )
 async def get_session_variables(session_id: str):
     """Return the session's ``${variable}`` namespace: name -> ordered values."""
@@ -1166,7 +1184,14 @@ async def get_session_variables(session_id: str):
     elements = session.elements
     return {"variables": elements.elements if isinstance(elements, ElementData) else {}}
 
-@app.get("/v1/sessions/{session_id}/elements")
+@app.get(
+    "/v1/sessions/{session_id}/elements",
+    responses={
+        400: {"description": MSG_INVALID_KEYWORD_REQUEST},
+        404: {"description": SESSION_NOT_FOUND},
+        500: {"description": MSG_KEYWORD_FAILED},
+    },
+)
 async def get_elements(
     session_id: str,
     filter_config: Optional[List[str]] = Query(None, description="Filter types: all, interactive, buttons, inputs, images, text"),
@@ -1191,14 +1216,21 @@ async def get_elements(
     Returns:
         The elements result.
     """
-    params: Dict[str, Union[str, List[str]]] = {}
+    params: Dict[str, str | List[str]] = {}
     if filter_config:
         params[PARAM_FILTER_CONFIG] = filter_config
     if compact:
         params["compact"] = "true"
     return await run_keyword_endpoint(session_id, "get_interactive_elements", params or None)
 
-@app.get("/v1/sessions/{session_id}/source")
+@app.get(
+    "/v1/sessions/{session_id}/source",
+    responses={
+        400: {"description": MSG_INVALID_KEYWORD_REQUEST},
+        404: {"description": SESSION_NOT_FOUND},
+        500: {"description": MSG_KEYWORD_FAILED},
+    },
+)
 async def get_pagesource(session_id: str):
     """
     Capture the page source from the current session.
@@ -1206,7 +1238,14 @@ async def get_pagesource(session_id: str):
     """
     return await run_keyword_endpoint(session_id, "capture_pagesource")
 
-@app.get("/v1/sessions/{session_id}/screen_elements")
+@app.get(
+    "/v1/sessions/{session_id}/screen_elements",
+    responses={
+        400: {"description": MSG_INVALID_KEYWORD_REQUEST},
+        404: {"description": SESSION_NOT_FOUND},
+        500: {"description": MSG_KEYWORD_FAILED},
+    },
+)
 async def screen_elements(session_id: str):
     """
     Capture and get screen elements from the current session.
@@ -1217,7 +1256,7 @@ async def screen_elements(session_id: str):
 @app.get(
     "/v1/sessions/{session_id}/events",
     responses={
-        404: {"description": "Session not found"},
+        404: {"description": SESSION_NOT_FOUND},
     },
 )
 async def stream_events(session_id: str):
@@ -1231,7 +1270,7 @@ async def stream_events(session_id: str):
     internal_logger.info(f"Starting event stream for session {session_id}")
     return EventSourceResponse(event_generator(session))
 
-@app.get("/v1/sessions/{session_id}/workspace/stream")
+@app.get("/v1/sessions/{session_id}/workspace/stream", responses={404: {"description": SESSION_NOT_FOUND}})
 async def stream_workspace(
     session_id: str,
     interval_ms: int = Query(2000, description="Polling interval in milliseconds (minimum 500ms)"),

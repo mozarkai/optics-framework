@@ -4,7 +4,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 import inspect
 import time
-from typing import Iterator, List, NamedTuple, Union, Tuple, Generator, Set, Optional, Any
+from typing import Iterator, List, NamedTuple, Tuple, Generator, Set, Optional, Any
 import cv2
 import numpy as np
 from optics_framework.common.base_factory import InstanceFallback
@@ -21,6 +21,7 @@ from optics_framework.common.text_match import TextMatch, find_text
 TEXT_DETECTION_NOT_AVAILABLE_MSG = "No text detection (OCR) engine is configured."
 # The class of a screen row read by OCR, which knows only the text and where it is.
 OCR_TEXT_CLASS = "Text"
+SCREENSHOT_FAILED_MSG = "Could not take a screenshot"
 # Below this, OCR is guessing at an icon or a mark; such a guess is not listed as a screen row.
 OCR_ROW_MIN_CONFIDENCE = 0.2
 OCR_NOT_TRIED_MSG = "OCR is off, so text that shows only in images was not searched. Add a text_detection engine to config.yaml to search it."
@@ -35,14 +36,12 @@ _held_frames: ContextVar[dict[int, Any] | None] = ContextVar("held_frames", defa
 @contextmanager
 def one_capture_per_source() -> Iterator[None]:
     """Inside, each source's screen is captured once and shared; a nested block shares the outer one's frames."""
-    if _held_frames.get() is not None:
-        yield
-        return
-    token = _held_frames.set({})
+    token = _held_frames.set({}) if _held_frames.get() is None else None
     try:
         yield
     finally:
-        _held_frames.reset(token)
+        if token is not None:
+            _held_frames.reset(token)
 
 
 @contextmanager
@@ -81,7 +80,7 @@ def screen_of(source: ElementSourceInterface) -> Any:
 
 class LocateValueWithFrame(NamedTuple):
     """Result from vision strategies: coordinates (or value) plus optional annotated image."""
-    value: Union[Tuple[int, int], object]
+    value: Tuple[int, int] | object
     annotated_frame: Optional[Any]
 
 
@@ -96,7 +95,7 @@ class LocatorStrategy(ABC):
     @abstractmethod
     def locate(
         self, element: str, index: int = 0
-    ) -> Optional[Union[object, Tuple[int, int], LocateValueWithFrame]]:
+    ) -> Optional[object | Tuple[int, int] | LocateValueWithFrame]:
         """Locates an element and returns either an element object or coordinates (x, y).
 
         :param element: The element identifier (e.g., XPath, text, image path).
@@ -192,7 +191,7 @@ class XPathStrategy(LocatorStrategy):
     def element_source(self) -> ElementSourceInterface:
         return self._element_source
 
-    def locate(self, element: str, index: int = 0) -> Optional[Union[object, Tuple[int, int]]]:
+    def locate(self, element: str, index: int = 0) -> Optional[object | Tuple[int, int]]:
         return self.element_source.locate(element, index)
 
     def can_assert(self, element: str) -> bool:
@@ -219,7 +218,7 @@ class TextElementStrategy(LocatorStrategy):
     def element_source(self) -> ElementSourceInterface:
         return self._element_source
 
-    def locate(self, element: str, index: int = 0) -> Optional[Union[object, Tuple[int, int]]]:
+    def locate(self, element: str, index: int = 0) -> Optional[object | Tuple[int, int]]:
         return self.element_source.locate(element, index)
 
     def can_assert(self, element: str) -> bool:
@@ -720,7 +719,7 @@ class ScreenshotStrategy:
             if _is_blind(e):
                 raise
             internal_logger.debug(f"Error capturing screenshot: {e}")
-            raise OpticsError(Code.E0303, message="Could not take a screenshot", cause=e)
+            raise OpticsError(Code.E0303, message=SCREENSHOT_FAILED_MSG, cause=e)
         if screenshot is not None and not utils.is_black_screen(screenshot):
             return screenshot
         held = _held_frames.get()
@@ -778,7 +777,7 @@ class LocateResult:
 
     def __init__(
         self,
-        value: Union[object, Tuple[int, int]],
+        value: object | Tuple[int, int],
         strategy: LocatorStrategy,
         annotated_frame: Optional[Any] = None,
     ):
@@ -1158,7 +1157,7 @@ class StrategyManager:
         if blind is not None:
             raise blind
         internal_logger.debug("No screenshot captured.")
-        raise OpticsError(Code.E0303, message="Could not take a screenshot", cause=last_error)
+        raise OpticsError(Code.E0303, message=SCREENSHOT_FAILED_MSG, cause=last_error)
 
     def capture_screenshot_bytes(self) -> bytes:
         """Return the current screen as encoded PNG bytes.
@@ -1186,7 +1185,7 @@ class StrategyManager:
         if last_error is not None and _is_blind(last_error):
             raise last_error
         raise OpticsError(
-            Code.E0303, message="Could not take a screenshot", cause=last_error
+            Code.E0303, message=SCREENSHOT_FAILED_MSG, cause=last_error
         )
 
     def capture_pagesource(self) -> Optional[Tuple[str, str]]:

@@ -640,26 +640,7 @@ def main():
         updates.refresh_in_background("cli")
     if hasattr(args, "func"):
         try:
-            args.func(args)
-        except KeyboardInterrupt:
-            print("Operation cancelled by user.", file=sys.stderr)
-            sys.exit(130)
-        except argparse.ArgumentError as e:
-            print(mask_secrets(f"Argument error: {e}"), file=sys.stderr)
-            sys.exit(2)
-        except ValueError as e:
-            print(mask_secrets(f"Error: {e}"), file=sys.stderr)
-            sys.exit(3)
-        except MissingExtraError as e:
-            abort_with_panel(str(e).splitlines())
-        except Exception as e:
-            print(mask_secrets(f"Unexpected error ({type(e).__name__}): {e}"), file=sys.stderr)
-            print(
-                "Run `optics doctor` to check your setup, "
-                "or `optics <command> --help` for usage.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            _run(args)
         finally:
             if notify:
                 _print_notice()
@@ -667,6 +648,30 @@ def main():
         _greet()
         if notify:
             _print_notice()
+
+
+def _run(args: argparse.Namespace) -> None:
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print("Operation cancelled by user.", file=sys.stderr)
+        sys.exit(130)
+    except argparse.ArgumentError as e:
+        print(mask_secrets(f"Argument error: {e}"), file=sys.stderr)
+        sys.exit(2)
+    except ValueError as e:
+        print(mask_secrets(f"Error: {e}"), file=sys.stderr)
+        sys.exit(3)
+    except MissingExtraError as e:
+        abort_with_panel(str(e).splitlines())
+    except Exception as e:
+        print(mask_secrets(f"Unexpected error ({type(e).__name__}): {e}"), file=sys.stderr)
+        print(
+            "Run `optics doctor` to check your setup, "
+            "or `optics <command> --help` for usage.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 # Long-running or full-screen commands show the notice their own way; upgrade and doctor report the version.

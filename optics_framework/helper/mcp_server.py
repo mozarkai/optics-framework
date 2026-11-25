@@ -488,7 +488,7 @@ def _slot_secrets(sid: str, slot: _Slot) -> set[str]:
 def _caller_secrets() -> set[str]:
     """Every secret value the caller's sessions, open or ended, have held."""
     known = {secret for ended in _ENDED.values() if ended.owner == _caller() for secret in ended.secrets}
-    for sid, slot in list(_STATES.items()):
+    for sid, slot in _STATES.items():
         if _owned(sid) is slot:
             known |= _slot_secrets(sid, slot)
     return known
@@ -1118,9 +1118,7 @@ def _add_resources(mcp: "FastMCP") -> None:
 def build_server(toolset: str | None = None) -> "FastMCP":
     """The FastMCP server with the ``core`` (default) or ``full`` toolset and the state resources."""
     _require_fastmcp()
-    toolset = (toolset or os.environ.get(ENV_TOOLSET, "") or "core").strip().lower()
-    if toolset not in TOOLSETS:
-        raise ValueError(f"Unknown MCP toolset '{toolset}'; use one of {', '.join(TOOLSETS)}")
+    toolset = _toolset(toolset)
     mcp = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS, version=VERSION)
 
     async def start_session(
@@ -1293,14 +1291,23 @@ def build_server(toolset: str | None = None) -> "FastMCP":
     if toolset == "full":
         reflected = _add_keyword_tools(mcp)
         mcp.add_tool(Tool.from_function(screenshot, annotations=reading))
-    for fn, hints, description in core:
-        if fn.__name__ not in reflected:
-            tool = Tool.from_function(fn, description=description, annotations=hints, output_schema=None)
-            tool.parameters = _lean_inputs(tool.parameters)
-            mcp.add_tool(tool)
-
+    _add_core_tools(mcp, [entry for entry in core if entry[0].__name__ not in reflected])
     _add_resources(mcp)
     return mcp
+
+
+def _toolset(toolset: str | None) -> str:
+    toolset = (toolset or os.environ.get(ENV_TOOLSET, "") or "core").strip().lower()
+    if toolset not in TOOLSETS:
+        raise ValueError(f"Unknown MCP toolset '{toolset}'; use one of {', '.join(TOOLSETS)}")
+    return toolset
+
+
+def _add_core_tools(mcp: "FastMCP", core: list[tuple[Callable[..., Any], Any, str]]) -> None:
+    for fn, hints, description in core:
+        tool = Tool.from_function(fn, description=description, annotations=hints, output_schema=None)
+        tool.parameters = _lean_inputs(tool.parameters)
+        mcp.add_tool(tool)
 
 
 def run_mcp_server(

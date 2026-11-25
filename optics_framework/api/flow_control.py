@@ -1,4 +1,4 @@
-from typing import Optional, Any, Union, Tuple, Callable, List
+from typing import Optional, Any, Tuple, Callable, List
 import ast
 import itertools
 import operator
@@ -530,7 +530,7 @@ class FlowControl:
     @substitutes_own_vars
     @raw_params(0)
     def read_data(
-        self, input_element: str, file_path: Union[str, List[Any]], query: str = ""
+        self, input_element: str, file_path: str | List[Any], query: str = ""
     ) -> List[Any]:
         """
         Reads tabular data from a CSV file, JSON file, environment variable, or a 2D list,
@@ -791,7 +791,7 @@ class FlowControl:
                 store_value = data_str
         return [store_value] if not isinstance(data_str, list) else data_str
 
-    def _load_data_with_query(self, file_path: Union[str, List[Any]], query: str) -> List[Any]:
+    def _load_data_with_query(self, file_path: str | List[Any], query: str) -> List[Any]:
         # Load as 2D list
         if isinstance(file_path, list):
             data = file_path
@@ -853,7 +853,7 @@ class FlowControl:
         return elem_name
 
     def _load_data(
-        self, file_path: Union[str, List[Any]], query: str
+        self, file_path: str | List[Any], query: str
     ) -> List[Any]:
         """Loads data from a list or CSV file. 'query' is a column name or index for CSV."""
         if isinstance(file_path, list):
@@ -1367,7 +1367,7 @@ class FlowControl:
         expression = path if path.lstrip().startswith("$") else f"$.{path}"
         try:
             matches = jsonpath_parse(expression).find(data)
-        except Exception as e:  # noqa: BLE001 - a bad path is a definition error, not a crash
+        except Exception as e:  # noqa: BLE001 - a bad path is a definition error and not a crash
             internal_logger.warning(f"Invalid extract path '{path}': {e}")
             return None
         if not matches:
