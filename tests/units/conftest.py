@@ -1,9 +1,7 @@
 """Shared fixtures for the unit suite."""
 import json
 import logging
-import tempfile
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -11,9 +9,6 @@ import optics_framework.api.action_keyword as action_keyword_module
 import optics_framework.common.agent_core as agent_core_module
 import optics_framework.api.verifier as verifier_module
 import optics_framework.common.strategies as strategies_module
-from optics_framework.common.driver_interface import DriverInterface
-from optics_framework.common.models import ElementData
-from optics_framework.common.runner.test_runnner import Runner
 from tests.units.fakes import FakeTime
 
 
@@ -43,26 +38,6 @@ def internal_log():
     logger.addHandler(kept)
     yield kept.messages
     logger.removeHandler(kept)
-
-
-@pytest.fixture
-def mock_driver():
-    mock = MagicMock(spec=DriverInterface)
-    mock.get_app_version.return_value = ""
-    mock.get_text_element.return_value = ""
-    return mock
-
-
-@pytest.fixture
-def mock_runner():
-    runner = MagicMock(spec=Runner)
-    runner.elements = ElementData()
-    runner.config_handler = MagicMock()
-    temp_dir = tempfile.mkdtemp()
-    runner.config_handler.config = SimpleNamespace(
-        execution_output_path=temp_dir, project_path=temp_dir
-    )
-    return runner
 
 
 class _FakeResponse:

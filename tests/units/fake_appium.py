@@ -25,6 +25,9 @@ class Element:
                                         self.node.get("bounds").strip("[]").split("]["))
         return {"x": left, "y": top, "width": right - left, "height": bottom - top}
 
+    def is_displayed(self):
+        return self.node.get("displayed") != "false"
+
     def get_attribute(self, name):
         return self.node.get("class" if name == "className" else name)
 
