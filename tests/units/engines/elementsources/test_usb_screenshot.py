@@ -20,17 +20,13 @@ from airhand.testing import FakeDongle  # noqa: E402
 WIDTH, HEIGHT = 360, 780
 BUTTON = (200, 500, 300, 560)
 
-FAKE_ADB = """#!{python}
-import pathlib, sys
-log = pathlib.Path({log!r})
-log.write_text(log.read_text() + " ".join(sys.argv[1:]) + "\\n")
-if sys.argv[1:] == ["devices"]:
-    print("List of devices attached")
-    print("".join(f"{{serial}}\\tdevice\\n" for serial in {devices!r}), end="")
-elif sys.argv[-3:] == ["exec-out", "screencap", "-p"]:
-    sys.stdout.buffer.write(pathlib.Path({screen!r}).read_bytes())
-else:
-    sys.exit(1)
+FAKE_ADB = """#!/bin/sh
+echo "$*" >> "$FAKE_ADB_PHONE/adb.log"
+case "$*" in
+    devices) echo 'List of devices attached'; cat "$FAKE_ADB_PHONE/devices" ;;
+    *" exec-out screencap -p") cat "$FAKE_ADB_PHONE/screen.png" ;;
+    *) exit 1 ;;
+esac
 """
 
 
@@ -44,22 +40,27 @@ def _screen() -> np.ndarray:
     return screen
 
 
+@pytest.fixture(scope="session")
+def adb_tools(tmp_path_factory):
+    """One fake adb for the session: macOS checks a new executable on its first run, which costs about 0.4 s."""
+    tools = tmp_path_factory.mktemp("tools")
+    adb = tools / "adb"
+    adb.write_text(FAKE_ADB)
+    adb.chmod(adb.stat().st_mode | stat.S_IXUSR)
+    return tools
+
+
 @pytest.fixture
-def phone(tmp_path, monkeypatch):
-    """A phone on USB: a fake adb on PATH that lists ``devices`` and returns the screen as PNG."""
-    tools = tmp_path / "tools"
-    tools.mkdir()
-    screen = tmp_path / "screen.png"
-    cv2.imwrite(str(screen), _screen())
+def phone(tmp_path, monkeypatch, adb_tools):
+    """A phone on USB: the fake adb lists ``devices`` and returns the screen as PNG."""
+    monkeypatch.setenv("PATH", f"{adb_tools}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_ADB_PHONE", str(tmp_path))
     log = tmp_path / "adb.log"
     log.write_text("")
 
     def plug(devices=("PHONE1",), size=(WIDTH, HEIGHT)):
-        cv2.imwrite(str(screen), cv2.resize(_screen(), size))
-        adb = tools / "adb"
-        adb.write_text(FAKE_ADB.format(python=sys.executable, log=str(log), devices=list(devices), screen=str(screen)))
-        adb.chmod(adb.stat().st_mode | stat.S_IXUSR)
-        monkeypatch.setenv("PATH", f"{tools}{os.pathsep}{os.environ['PATH']}")
+        cv2.imwrite(str(tmp_path / "screen.png"), cv2.resize(_screen(), size))
+        (tmp_path / "devices").write_text("".join(f"{serial}\tdevice\n" for serial in devices))
         return log
 
     return plug
