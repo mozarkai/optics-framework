@@ -42,6 +42,27 @@ class TestAssertPresence:
         assert "OCR is off" in caught.value.hint
 
 
+class TreeLess(PhoneSource):
+    """A source with a page source that cannot list the screen's elements, as AppiumFindElement."""
+
+    def get_interactive_elements(self, filter_config=None, compact=False):
+        raise NotImplementedError("does not list elements")
+
+
+class TestGetInteractiveElements:
+    def test_a_source_that_cannot_list_them_is_not_asked(self):
+        phone = Phone([Node("Submit", (50, 50))])
+        with pytest.raises(OpticsError) as caught:
+            phone_screen(phone, sources=[TreeLess(phone, PhoneDriver(phone))]).get_interactive_elements()
+        assert str(caught.value) == "E0202: Could not list the elements on the screen"
+
+    def test_ocr_lists_them_when_no_source_can(self):
+        phone = Phone([Node("Submit", (50, 50))])
+        assert phone_screen(phone, ocr=True, sources=[TreeLess(phone, PhoneDriver(phone))]).get_interactive_elements() == [
+            {"text": "Submit", "bounds": {"x1": 45, "y1": 45, "x2": 55, "y2": 55}, "act": ["tap"],
+             "extra": {"class": "Text"}, "ocr": True, "ocr_index": 0}]
+
+
 class _StaleAfterFind:
     """A handle the driver gives out but can no longer resolve, as xa11y does inside an AppKit table."""
 
