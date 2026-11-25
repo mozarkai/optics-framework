@@ -72,6 +72,9 @@ class _Phone:
         self.keys.append(keycode)
         self.level = min(1.0, max(0.3, self.level + (0.1 if keycode == "brightnessup" else -0.1)))
 
+    def supports(self, capability: str) -> bool:
+        return True
+
     def point_at(self, point) -> None:
         self.pointer = point and (point[0] * SCREEN_W, point[1] * SCREEN_H)
 
@@ -174,12 +177,15 @@ def test_an_assertion_keeps_reading_the_native_tree_while_the_camera_is_blind(ca
     assert tree.looks == 2
 
 
-@pytest.mark.parametrize("rotation", [None, "clockwise", "counterclockwise"])
-def test_the_pointer_finds_a_screen_black_to_its_edges(camera, phone, rotation, monkeypatch):
+@pytest.mark.parametrize(
+    ("find_screen", "rotation"),
+    [("pointer", None), ("pointer", "clockwise"), ("pointer", "counterclockwise"), ("auto", "counterclockwise")],
+)
+def test_the_pointer_finds_a_screen_black_to_its_edges(camera, phone, find_screen, rotation, monkeypatch):
     monkeypatch.setattr(camera_screenshot, "POINTER_SETTLE_SECONDS", 0)
     phone.content = DARK
     size = (SCREEN_H, SCREEN_W) if rotation else (SCREEN_W, SCREEN_H)
-    capabilities = {"url": camera, "find_screen": "pointer", "out_width": size[0], "out_height": size[1], "rotation": rotation}
+    capabilities = {"url": camera, "find_screen": find_screen, "out_width": size[0], "out_height": size[1], "rotation": rotation}
     source = CameraScreenshot({"capabilities": capabilities}, driver=phone)
     assert _shows_the_screen(source.capture(), DARK) and phone.pointer is None
 

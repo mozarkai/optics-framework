@@ -117,12 +117,12 @@ class CapabilitiesConfig(BaseModel):
         None,
         description="The screen's corners in the camera frame as 'x,y': top-left, top-right, bottom-right, bottom-left",
     )
-    find_screen: Optional[Literal["brightness", "frame", "pointer"]] = Field(
+    find_screen: Optional[Literal["auto", "brightness", "frame", "pointer"]] = Field(
         None,
         description=(
             "Find the screen's corners in the camera frame instead of deskew_corners: 'brightness' with the driver's"
             " brightness keys, 'frame' from one frame of a bright screen, 'pointer' from where the camera sees the"
-            " driver's pointer, whatever the screen shows"
+            " driver's pointer, whatever the screen shows; 'auto' tries brightness, then the pointer"
         ),
     )
     camera_width: Optional[int] = Field(None, gt=0, description="Width the webcam captures at; the largest it gives when unset")
@@ -371,7 +371,8 @@ class CameraScreenshot(ElementSourceInterface):
         return cv2.warpPerspective(frame, self._deskew, (self.out_width, self.out_height))
 
     def _calibrate(self, frame: np.ndarray) -> None:
-        name, corners = self._pointer_corners(frame) if self.find_screen == "pointer" else self._lit_corners(frame)
+        finder = {"pointer": self._pointer_corners, "auto": self._auto_corners}.get(self.find_screen, self._lit_corners)
+        name, corners = finder(frame)
         self._use_corners(corners)
         self._found_on = frame.shape[:2]
         found = ", ".join(f'"{x:.0f},{y:.0f}"' for x, y in corners)
@@ -381,6 +382,12 @@ class CameraScreenshot(ElementSourceInterface):
         self._save(marked, "camera_screen_found")
 
     def _lit_corners(self, frame: np.ndarray) -> tuple[str, np.ndarray]:
+        try:
+            return self._lit_screen(frame)
+        except screen_finder.ScreenNotFound as exc:
+            raise self._blind(f"no screen found: {exc}", frame) from exc
+
+    def _lit_screen(self, frame: np.ndarray) -> tuple[str, np.ndarray]:
         reasons = []
         for name, signals in self._screen_signals(frame):
             try:
@@ -389,7 +396,17 @@ class CameraScreenshot(ElementSourceInterface):
             except screen_finder.ScreenNotFound as exc:
                 internal_logger.info(f"No screen found by {name}: {exc}")
                 reasons.append(str(exc))
-        raise self._blind(f"no screen found: {'; '.join(reasons)}", frame)
+        raise screen_finder.ScreenNotFound("; ".join(reasons))
+
+    def _auto_corners(self, frame: np.ndarray) -> tuple[str, np.ndarray]:
+        """Brightness, then the pointer where the driver shows one: a screen dark to its edges has no lit rectangle."""
+        try:
+            return self._lit_screen(frame)
+        except screen_finder.ScreenNotFound as lit:
+            if self.driver is None or not self.driver.supports("point_at"):
+                raise self._blind(f"no screen found: {lit}, and the driver shows no pointer", frame) from lit
+            internal_logger.info(f"No lit screen found ({lit}); finding it with the driver's pointer")
+            return self._pointer_corners(frame)
 
     def _pointer_corners(self, frame: np.ndarray) -> tuple[str, np.ndarray]:
         """The corners from frames with the driver's pointer at known places on the screen, each between two frames with it elsewhere."""
@@ -437,10 +454,12 @@ class CameraScreenshot(ElementSourceInterface):
     def _screen_signals(self, frame: np.ndarray) -> list[tuple[str, Callable[[], tuple[np.ndarray, np.ndarray]]]]:
         """The ways to find the screen, best first; brightness falls back to one frame when the keys do nothing."""
         ways = [("one frame", lambda: screen_finder.frame_signals(frame))]
-        if self.find_screen != "brightness":
+        if self.find_screen not in ("auto", "brightness"):
+            return ways
+        if self.driver is None and self.find_screen == "auto":
             return ways
         if self.driver is None:
-            raise OpticsError(Code.E0501, message="find_screen: brightness presses the brightness keys of a driver; enable one, or use find_screen: frame")
+            raise OpticsError(Code.E0501, message=f"find_screen: {self.find_screen} presses the brightness keys of a driver; enable one, or use find_screen: frame")
         try:
             dim = self._at_brightness("brightnessdown")
             bright = self._at_brightness("brightnessup")
