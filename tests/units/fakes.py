@@ -85,11 +85,17 @@ class Layer:
 
 
 class Phone:
-    """An app's nodes under popup layers. A lookup sees past no layer that ``hides``; any layer takes a tap on the app."""
+    """An app's nodes under popup layers. A lookup sees past no layer that ``hides``; any layer takes a tap on the app.
+    A scroll down brings the ``below`` nodes into view."""
 
-    def __init__(self, app, *layers):
-        self.app, self.layers = list(app), list(layers)
+    def __init__(self, app, *layers, below=()):
+        self.app, self.layers, self.below = list(app), list(layers), list(below)
         self.lookups, self.taps, self.swipes, self.typed, self.named, self.source_reads = [], [], [], [], [], 0
+
+    def scroll(self, direction):
+        self.swipes.append(direction)
+        if direction == "down":
+            self.app, self.below = self.app + self.below, []
 
     def shown(self):
         nodes = [node for layer in self.layers for node in layer.nodes]
@@ -145,6 +151,9 @@ class PhoneDriver(DriverInterface):
     def enter_text_element(self, element, text, event_name=None):
         self._name(event_name)
         self.phone.typed.append((element.at, text))
+
+    def scroll(self, direction, duration=1000, event_name=None):
+        self.phone.scroll(direction)
 
     def swipe(self, x_coor, y_coor, direction, swipe_length, event_name=None):
         self.phone.swipes.append((x_coor, y_coor, direction, swipe_length))
@@ -221,15 +230,16 @@ class PhoneOCR(TextInterface):
         return " ".join(text for _, text, _ in lines), lines
 
 
-class GivingUpModel(LLMInterface):
-    """A self-heal model that gives up at once and keeps each prompt it was sent."""
+class ScriptedModel(LLMInterface):
+    """A self-heal model that sends ``replies`` in turn, then gives up, and keeps each prompt it was sent."""
 
-    def __init__(self):
-        self.prompts = []
+    def __init__(self, *replies):
+        self.replies, self.prompts = list(replies), []
 
     def generate(self, prompt, images=None, system=None, response_schema=None, *, temperature=None):
         self.prompts.append(prompt)
-        return json.dumps({"reason": "Nothing on the screen fits.", "action": "give_up"})
+        reply = self.replies.pop(0) if self.replies else {"reason": "Nothing on the screen fits.", "action": "give_up"}
+        return json.dumps(reply)
 
 
 class PhoneBuilder:

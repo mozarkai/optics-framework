@@ -6,7 +6,7 @@ import pytest
 from optics_framework.common import test_context
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.popup_guard import PopupRun
-from tests.units.fakes import GivingUpModel, Layer, Node, Phone, phone_keywords
+from tests.units.fakes import ScriptedModel, Layer, Node, Phone, phone_keywords
 from tests.units.popup_helpers import rule
 
 CARD, MAYBE_LATER, MINIMISE = (1, 2), (10, 20), (30, 40)
@@ -39,7 +39,7 @@ def run():
 
 @pytest.fixture
 def model():
-    return GivingUpModel()
+    return ScriptedModel()
 
 
 @pytest.fixture
