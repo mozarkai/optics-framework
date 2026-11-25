@@ -951,27 +951,28 @@ def _decode_screenshot(result: Any) -> bytes:
 
 def _screen_sources(
     driver: str, capabilities: dict[str, Any], elements_sources: list[str] | None,
-) -> tuple[list[Any], dict[str, Any] | None]:
-    """The session's element sources, and the camera among them that reads the screen in the driver's frame."""
+) -> tuple[list[Any], bool]:
+    """The session's element sources, and whether one of them reads the screen only as an image."""
     if elements_sources is None:
         sources = list(_default_sources_for_driver(driver))
         camera = None if sources else _camera_source(capabilities)
-        return ([camera] if camera else sources), camera
+        return ([camera] if camera else sources), camera is not None
+    image_only = "usb_screenshot" in elements_sources
     if "camera_screenshot" not in elements_sources:
-        return list(elements_sources), None
+        return list(elements_sources), image_only
     camera = _sized_camera(capabilities)
-    return [camera if name == "camera_screenshot" else name for name in elements_sources], camera
+    return [camera if name == "camera_screenshot" else name for name in elements_sources], True
 
 
 def _session_config(
     driver: str, url: str, capabilities: dict[str, Any], elements_sources: list[str] | None, **fields: Any,
 ) -> expose_api.SessionConfig:
     source = {driver: {"enabled": True, "url": url or None, "capabilities": dict(capabilities)}}
-    sources, camera = _screen_sources(driver, capabilities, elements_sources)
+    sources, image_only = _screen_sources(driver, capabilities, elements_sources)
     defaults = {"text_detection": lambda: installed_local_engines()[:1], "image_detection": lambda: ["templatematch"]}
     for key, default in defaults.items():
         if fields.get(key) is None:
-            fields[key] = default() if camera is not None else []
+            fields[key] = default() if image_only else []
     return expose_api.SessionConfig(
         driver_sources=[source if url or capabilities else driver], elements_sources=sources, **fields,
     )

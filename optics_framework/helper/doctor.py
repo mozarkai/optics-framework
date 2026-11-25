@@ -64,7 +64,8 @@ _CONFIG_FILE = "config: file"
 _BLE_DONGLE = "ble dongle"
 _BLE_DEVICE = "ble paired device"
 _BLE_HOSTS = "ble hosts"
-_ANY_DRIVER_SOURCES = frozenset({"camera_screenshot"})
+_USB_SCREEN = "usb screenshot"
+_ANY_DRIVER_SOURCES = frozenset({"camera_screenshot", "usb_screenshot"})
 _AIRHAND_DOCS = "https://github.com/chinmayajha/airhand"
 _XA11Y_DRIVER = "xa11y driver"
 _XA11Y_PACKAGE = "appium-xa11y-driver"
@@ -472,7 +473,7 @@ def _source_row(driver: str, enabled_sources: set[str]) -> Check:
     if driver == "ble":
         return Check("config: ble element source", "warn",
                      "no screen source: only keywords that do not read the screen run",
-                     "Enable camera_screenshot under elements_sources to read the screen.")
+                     "Enable camera_screenshot or usb_screenshot under elements_sources to read the screen.")
     return Check(f"config: {driver} element source", "fail",
                  f"no {driver}_* element source enabled",
                  "Enable at least one matching entry under elements_sources.")
@@ -583,6 +584,42 @@ def _host_row(host: Any, hosts: "list[airhand.Host] | None") -> Check | None:
     except airhand.Refused as exc:
         return Check(_BLE_HOSTS, "fail", str(exc), "Pair the device with airhand once, or fix capabilities.host.")
     return None
+
+
+def check_usb_screen(usb_caps: dict | None, ble_caps: dict | None) -> list[Check]:
+    """Whether usb_screenshot finds its tool and one phone, and takes a screenshot the size of the ble frame."""
+    if usb_caps is None:
+        return []
+    if not isinstance(usb_caps, dict):
+        return [Check(_USB_SCREEN, "fail", f"usb_screenshot capabilities must be a mapping, not {usb_caps!r}",
+                      "Set capabilities to keys such as serial: or remove them.")]
+    ble_caps = ble_caps if isinstance(ble_caps, dict) else {}
+    from optics_framework.common.image_decode import image_size
+    from optics_framework.engines.elementsources import usb_screenshot
+
+    platform = usb_caps.get("platform") or ble_caps.get("platform")
+    usb = usb_screenshot.PLATFORMS.get(platform)
+    if usb is None:
+        return [Check(_USB_SCREEN, "fail", f"platform {platform} has no USB screenshots",
+                      "Set capabilities.platform to android or ios, or use camera_screenshot.")]
+    if shutil.which(usb.tool) is None:
+        return [Check(_USB_SCREEN, "fail", usb.missing, "")]
+    try:
+        source = usb_screenshot.UsbScreenshot({"capabilities": {**usb_caps, "platform": platform}})
+        width, height = image_size(source.capture_screenshot_bytes())
+    except OpticsError as exc:
+        return [Check(_USB_SCREEN, "fail", exc.message or str(exc), usb.hint)]
+    frame = ble_caps.get("frame") if isinstance(ble_caps.get("frame"), dict) else None
+    if frame is not None and (frame.get("width"), frame.get("height")) != (width, height):
+        return [Check(_USB_SCREEN, "fail", f"the screenshot is {width}x{height}, but the ble frame is {frame.get('width')}x{frame.get('height')}",
+                      f"Set the ble frame to {{width: {width}, height: {height}}}.")]
+    return [Check(_USB_SCREEN, "ok", f"{width}x{height} from {source.serial}")]
+
+
+def _usb_caps(folder: str | None) -> dict | None:
+    data, _ = _load_project_yaml(folder) if folder else (None, None)
+    cfg = _enabled_entries((data or {}).get("elements_sources")).get("usb_screenshot")
+    return None if cfg is None else cfg.get("capabilities") or {}
 
 
 def _ble_caps(folder: str | None) -> dict | None:
@@ -821,8 +858,11 @@ def diagnose(folder: str | None = None) -> Diagnosis:
         ("Web", check_web(_playwright_is_remote(folder))),
     ]
     ble_caps = _ble_caps(folder)
+    usb_rows = check_usb_screen(_usb_caps(folder), ble_caps)
     if ble_caps is not None:
-        sections.append(("Bluetooth", check_ble(ble_caps)))
+        sections.append(("Bluetooth", check_ble(ble_caps) + usb_rows))
+    elif usb_rows:
+        sections.append(("Screen over USB", usb_rows))
     if folder:
         sections.append(("Project", validate_project(folder)))
     elif not os.path.isfile(os.path.join(os.getcwd(), "config.yaml")):

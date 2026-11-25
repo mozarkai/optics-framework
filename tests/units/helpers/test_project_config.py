@@ -83,6 +83,16 @@ class TestPromptProjectConfig:
             "log_level": "INFO",
         }
 
+    def test_a_bluetooth_phone_on_usb_reads_its_screen_with_usb_screenshots(self):
+        ask_values = ["bluetooth", "android", "", "1272", "2772", "usb", "INFO"]
+        with patch(f"{MODULE}.Prompt.ask", side_effect=ask_values), \
+                patch(f"{MODULE}.Confirm.ask", return_value=True), \
+                patch(f"{MODULE}._detected_dongle", return_value=""):
+            answers = project_config.prompt_project_config()
+        config = yaml.safe_load(project_config.render_project_config(answers))
+        assert _enabled_names(config, "driver_sources") == ["ble"]
+        assert _enabled_names(config, "elements_sources") == ["usb_screenshot"]
+
     def test_prompted_answers_round_trip_through_renderer(self):
         ask_values = [
             "web-selenium", "http://grid.local:4444/wd/hub", "ERROR",

@@ -319,6 +319,8 @@ def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str
         return
     if name == "ble":
         _refuse_unknown_dongle(capabilities, enabled)
+    if name == "usb_screenshot" and enabled:
+        raise OpticsError(Code.E0501, f"{name}: a remote session cannot read a device attached to the server; use a stdio MCP server")
     if name == "camera_screenshot" and (url or capabilities.get("url") or "camera_index" in capabilities):
         # The server would fetch any address, or open any of its own cameras, that the caller names.
         raise OpticsError(Code.E0501, f"{name}: a remote session reads the camera the server sets in WEBCAM_SCREENSHOT_URL")
