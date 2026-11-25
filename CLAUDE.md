@@ -268,7 +268,7 @@ When a change breaks a test, either the test found a regression (fix the code) o
 
 ## Hard rules
 
-1. **Run pre-commit before committing** (`poetry run pre-commit run --files <changed>` or the git hook; never `--no-verify`). It chains ruff, bandit, whitespace/YAML/JSON checks, commitizen and gitleaks.
+1. **Run pre-commit before committing** (`poetry run pre-commit run --files <changed>` or the git hook; never `--no-verify`). It chains ruff, bandit, whitespace/YAML/JSON checks, commitizen, gitleaks and `scripts/sonar_lint.py`, which runs the SonarCloud rules this project keeps hitting offline, on the changed lines only (`--all` for every line, `SONAR_LINT_BASE` for another base). Suppress a finding with `# NOSONAR`, which SonarCloud also honours.
 2. **Trace the blast radius before changing a function** (`grep -rn "<name>" optics_framework/ tests/`):
    - Renaming a public method on `ActionKeyword` / `AppManagement` / `Verifier` / `FlowControl` breaks every CSV/YAML that names it, its `optics.py:Optics` wrapper and the code `optics generate` emits.
    - A keyword's Robot display name (the `@keyword(...)` string) is independent of the method name.

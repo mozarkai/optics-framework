@@ -52,6 +52,8 @@ jobs:
           fi
 
       - name: Run Pre-Commit Hooks
+        env:
+          SONAR_LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD' }}
         run: |
           if [ -n "${{ env.CHANGED_FILES }}" ]; then
             echo "Running pre-commit on:"

@@ -18,6 +18,14 @@ repos:
         entry: python scripts/check_tests.py
         language: python
         files: ^tests/
+      - id: sonar-lint
+        name: sonar rules (changed lines)
+        entry: python scripts/sonar_lint.py
+        language: python
+        additional_dependencies: ["ruff==0.16.10", "complexipy==9.0.0"]
+        types: [python]
+        require_serial: true
+        exclude: ^(dist|site)/
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.3
