@@ -4,6 +4,7 @@ from appium.common.exceptions import NoSuchContextException
 from selenium.common.exceptions import WebDriverException
 
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.engines.elementsources.appium_web import AppiumWeb
 from tests.units.fake_appium import AppiumServer, appium_driver
 
 NATIVE = "NATIVE_APP"
@@ -71,3 +72,18 @@ def test_page_boxes_are_placed_on_the_screen_through_a_probe(monkeypatch):
     rects = started(monkeypatch, server, IOS).web_rects_to_screen([{"x": 24, "y": 24, "width": 354, "height": 38}, None])
     assert rects == [{"x": 24, "y": 86, "width": 354, "height": 38}, None]
     assert server.commands("context") == [("context", NATIVE), ("context", "WEBVIEW_100.1")]
+
+
+def test_a_browser_session_is_read_natively_not_through_its_web_context(monkeypatch):
+    server = AppiumServer()
+    web = AppiumWeb(driver=started(monkeypatch, server, {**IOS, "browserName": "Safari"}))
+    assert web.locate("css=#q") is None
+    assert web.get_interactive_elements() == []
+    assert server.commands("context", "mobile: getContexts") == []
+
+
+def test_one_look_answers_each_element_in_one_visit_to_the_page(monkeypatch):
+    server = AppiumServer(chrome("com.android.chrome", "CHROMIUM", None), page='<html><input id="q"/></html>')
+    web = AppiumWeb(driver=started(monkeypatch, server, ANDROID))
+    assert web.check_elements(["css=#q", "css=#missing"]) == [True, False]
+    assert server.commands("context") == [("context", "CHROMIUM"), ("context", NATIVE)]

@@ -59,6 +59,10 @@ class AppiumServer:
             value = f"//*[@class='{value}']"
         elif by == AppiumBy.ACCESSIBILITY_ID:
             value = f"//*[@name='{value}']"
+        elif by == AppiumBy.CSS_SELECTOR:
+            if not value.startswith("#"):
+                raise NotImplementedError(f"the fake page finds CSS ids only, not {value!r}")
+            value = f"//*[@id='{value[1:]}']"
         return [Element(self, node) for node in etree.fromstring(self.page.encode()).getroottree().xpath(value)]
 
     @property
