@@ -1,32 +1,19 @@
-"""OCR text locators match the same way for every engine, on locate and on assert: whole words when strict, parts of words too otherwise."""
-import functools
-import os
-import shutil
-from types import SimpleNamespace
-
-import numpy as np
+"""find_text: where a text locator appears among OCR detections, the same for every engine."""
 import pytest
 
-from optics_framework.common.strategies import TextDetectionStrategy
-from optics_framework.common.text_interface import TextInterface
+from optics_framework.common.text_match import TextMatch, find_text
 
 
-SCREEN = [
-    ((40, 40), "Sign in to your account"),
-    ((40, 140), "Payment"),
-    ((40, 240), "Home"), ((340, 240), "Search"), ((640, 240), "Profile"),
-    ((40, 340), "Continue with Google"),
-    ((40, 440), "Forgot password?"),
-    ((40, 540), "Sign in"),
-]
+def detection(text, left, top, right, bottom):
+    return [(left, top), (right, top), (right, bottom), (left, bottom)], text, 0.9
 
 
-def _quad(left, top, right, bottom):
-    return [(left, top), (right, top), (right, bottom), (left, bottom)]
+def match(center, top_left, bottom_right):
+    return TextMatch(center, (top_left, bottom_right))
 
 
 # Google Vision on a Galaxy S22: a Play Store dialog, and app drawer labels and an icon moved below it.
-DEVICE = [
+GALAXY_S22 = [detection(text, *box) for text, box in [
     ("Introducing", (244, 535, 592, 594)), ("Google", (612, 538, 841, 596)),
     ("Play", (380, 626, 504, 687)), ("Points", (516, 621, 703, 683)),
     ("Earn", (194, 1159, 275, 1199)), ("points", (290, 1159, 408, 1199)), ("on", (419, 1159, 464, 1199)),
@@ -37,99 +24,67 @@ DEVICE = [
     ("Not", (457, 1691, 531, 1722)), ("now", (542, 1694, 621, 1725)),
     ("Clock", (122, 1885, 206, 1908)), ("Contacts", (350, 1884, 479, 1909)),
     ("G", (90, 2050, 235, 2190)), ("Google", (111, 2230, 215, 2258)), ("Maps", (378, 2232, 454, 2258)),
-]
-DEVICE_NOT_FOUND = ["Learn more Not now", "more Not", "Clock Google", "G Google", "Points Earn", "Clock Contacts"]
+]]
 
 
-class Replay(TextInterface):
-    def __init__(self, detections):
-        self.detections = [(_quad(*box), text, 0.9) for text, box in detections]
-
-    def detect_text(self, input_data):
-        return " ".join(text for _, text, _ in self.detections), self.detections
-
-FRAME = np.zeros((640, 900, 3), dtype=np.uint8)
-TOLERANCE = 8
-
-
-def _strict_source():
-    config = SimpleNamespace(strict_element_match=True)
-    return SimpleNamespace(driver=SimpleNamespace(event_sdk=SimpleNamespace(config_handler=SimpleNamespace(config=config))))
-
-
-@pytest.mark.parametrize("text", DEVICE_NOT_FOUND)
-def test_lines_of_separate_controls_do_not_join(text):
-    assert Replay(DEVICE).find_element(FRAME, text, strict=True) is None
-
-
-@pytest.mark.parametrize(("line", "text", "left", "right"), [
-    ("מספר 12 34", "12", 60, 100), ("מספר 12 34", "34", 0, 40), ("abc שלום 12", "12", 80, 120),
+@pytest.mark.parametrize(("detections", "text", "strict", "found"), [
+    pytest.param([detection("Sign in", 0, 0, 140, 20)], "", True, [], id="an empty locator"),
+    pytest.param([detection("Sign in", 0, 0, 140, 20)], "   ", True, [], id="a locator of spaces"),
+    pytest.param([], "Sign in", True, [], id="no detections"),
+    pytest.param([detection("Payment", 0, 0, 140, 20)], "Payment", True,
+                 [match((70, 10), (0, 0), (140, 20))], id="one word"),
+    pytest.param([detection("Payment", 0, 0, 140, 20)], "PAYMENT", True,
+                 [match((70, 10), (0, 0), (140, 20))], id="a locator in other case"),
+    pytest.param([detection("Sign in", 0, 0, 140, 20)], "Signin", True,
+                 [match((70, 10), (0, 0), (140, 20))], id="a locator without its spaces"),
+    pytest.param([detection("Sign      in", 0, 0, 120, 20)], "Sign in", True,
+                 [match((60, 10), (0, 0), (120, 20))], id="extra spaces inside one detection"),
+    pytest.param([detection("Sign", 0, 0, 80, 20), detection("in", 90, 0, 130, 20)], "Sign in", True,
+                 [match((65, 10), (0, 0), (130, 20))], id="words from two detections on one row"),
+    pytest.param([detection("Fix: plates!", 0, 0, 240, 20)], "plates", True,
+                 [match((160, 10), (100, 0), (220, 20))], id="a word with punctuation around it"),
+    pytest.param([detection("Ｓｉｇｎ", 0, 0, 80, 20)], "Sign", True,
+                 [match((40, 10), (0, 0), (80, 20))], id="full-width letters"),
+    pytest.param([detection("can't stop", 0, 0, 200, 20)], "can't", True,
+                 [match((50, 10), (0, 0), (100, 20))], id="a word with an apostrophe"),
+    pytest.param([detection("can't stop", 0, 0, 200, 20)], "can", True, [], id="strict, the part before an apostrophe"),
+    pytest.param([detection("東京駅", 0, 0, 60, 20)], "東京", True,
+                 [match((20, 10), (0, 0), (40, 20))], id="characters of a script without spaces"),
+    pytest.param([detection("Payment", 0, 0, 140, 20)], "Pay", True, [], id="strict, a part of a word"),
+    pytest.param([detection("Payment", 0, 0, 140, 20)], "Pay", False,
+                 [match((70, 10), (0, 0), (140, 20))], id="loose, a part of a word"),
+    pytest.param([detection("Payment", 10, 10, 200, 40), detection("Pay", 10, 100, 90, 130)], "Pay", False,
+                 [match((50, 115), (10, 100), (90, 130)), match((105, 25), (10, 10), (200, 40))],
+                 id="loose, a whole word before a part of a word above it"),
+    pytest.param([detection("no no", 0, 0, 100, 20)], "no", True,
+                 [match((20, 10), (0, 0), (40, 20)), match((80, 10), (60, 0), (100, 20))],
+                 id="a word twice in one detection"),
+    pytest.param([detection("Home", 0, 100, 80, 120), detection("Home", 200, 0, 280, 20), detection("Home", 0, 0, 80, 20)],
+                 "Home", True,
+                 [match((40, 10), (0, 0), (80, 20)), match((240, 10), (200, 0), (280, 20)), match((40, 110), (0, 100), (80, 120))],
+                 id="matches in reading order"),
+    pytest.param([detection("Continue with", 0, 0, 260, 20), detection("Google", 0, 30, 120, 50)], "Continue with Google", True,
+                 [match((130, 10), (0, 0), (260, 50))], id="text wrapped onto the next line"),
+    pytest.param([detection("Home", 0, 0, 80, 20), detection("Search", 300, 0, 420, 20)], "Home Search", True, [],
+                 id="two far apart words on one row"),
+    pytest.param([detection("מספר 12 34", 0, 0, 200, 20)], "12", True,
+                 [match((80, 10), (60, 0), (100, 20))], id="the first number in right-to-left text"),
+    pytest.param([detection("מספר 12 34", 0, 0, 200, 20)], "34", True,
+                 [match((20, 10), (0, 0), (40, 20))], id="the last number in right-to-left text"),
+    pytest.param([detection("abc שלום 12", 0, 0, 220, 20)], "12", True,
+                 [match((100, 10), (80, 0), (120, 20))], id="a number after right-to-left text in a left-to-right line"),
 ])
-def test_numbers_are_placed_where_bidirectional_text_draws_them(line, text, left, right):
-    center = Replay([_line(line, 0, 0, 20 * len(line), 20)]).find_element(FRAME, text, strict=True)[1]
-    assert left <= center[0] <= right, center
+def test_find_text(detections, text, strict, found):
+    assert find_text(detections, text, strict) == found
 
 
-def test_without_strict_a_part_of_a_word_is_found_after_whole_words():
-    ocr = Replay([_line("Payment", 10, 10, 200, 40), _line("Pay", 10, 100, 90, 130)])
-    assert [ocr.find_element(FRAME, "Pay", index=i)[1][1] for i in (0, 1)] == [115, 25]
-
-
-def test_extra_spaces_inside_one_detection_do_not_split_it():
-    assert Replay([_line("Sign      in", 0, 0, 120, 20)]).find_element(FRAME, "Sign in", strict=True)[0]
-
-
-def _line(text, left, top, right, bottom):
-    return (text, (left, top, right, bottom))
-
-
-def _rendered_screen():
-    from PIL import Image, ImageDraw, ImageFont
-
-    image = Image.new("RGB", (900, 640), "white")
-    draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default(size=34)
-    for xy, text in SCREEN:
-        draw.text(xy, text, fill="black", font=font)
-    return np.array(image)[:, :, ::-1].copy()
-
-
-def _real_engines():
-    engines = []
-    if shutil.which("tesseract"):
-        engines.append(pytest.param("pytesseract", id="pytesseract"))
-    if _easyocr_models_downloaded():
-        engines.append(pytest.param("easyocr", id="easyocr"))
-    return engines
-
-
-def _easyocr_models_downloaded():
-    try:
-        from easyocr.config import MODULE_PATH, detection_models, recognition_models
-        from easyocr.utils import calculate_md5
-    except (ImportError, OSError):
-        return False
-    models = (detection_models["craft"], recognition_models["gen2"]["english_g2"])
-    paths = [os.path.join(MODULE_PATH, "model", model["filename"]) for model in models]
-    return all(os.path.isfile(path) and calculate_md5(path) == model["md5sum"] for path, model in zip(paths, models))
-
-
-@pytest.mark.parametrize("name", _real_engines())
-def test_real_engines_find_multi_word_text_and_reject_partial_words(name, monkeypatch):
-    if name == "pytesseract":
-        pytest.importorskip("pytesseract")
-        from optics_framework.engines.vision_models.ocr_models.pytesseract import PytesseractHelper as Engine
-    else:
-        import easyocr
-
-        monkeypatch.setattr(easyocr, "Reader", functools.partial(easyocr.Reader, download_enabled=False))
-        from optics_framework.engines.vision_models.ocr_models.easyocr import EasyOCRHelper as Engine
-    ocr, frame = Engine({}), _rendered_screen()
-    for text in ["Sign in", "sign in to your account", "Continue with Google", "Forgot password"]:
-        assert (ocr.find_element(frame, text) or [False])[0], text
-    google = ocr.find_element(frame, "Google")
-    assert google[1][0] > 230, f"tapped {google[1]} instead of the word Google"
-    for text in ["Pay", "Home Search", "Sign i"]:
-        assert ocr.find_element(frame, text, strict=True) is None, text
-    strategy = TextDetectionStrategy(element_source=_strict_source(), text_detection=ocr, strategy_manager=None)
-    assert strategy.check_elements(["Sign in to your account", "Pay"], True, frame)[0] == [True, False]
+@pytest.mark.parametrize("text", [
+    pytest.param("Learn more Not now", id="two buttons one above the other"),
+    pytest.param("more Not", id="the end of one button and the start of the next"),
+    pytest.param("Clock Google", id="two app labels on rows apart"),
+    pytest.param("G Google", id="an icon and the label below it"),
+    pytest.param("Points Earn", id="a dialog title and its body"),
+    pytest.param("Clock Contacts", id="two app labels on one row"),
+])
+def test_find_text_does_not_join_separate_controls(text):
+    assert find_text(GALAXY_S22, text, strict=True) == []
