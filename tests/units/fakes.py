@@ -1,5 +1,6 @@
 """Fakes for what the runner and the keywords reach outside the process: a session, an event manager, a phone and a model."""
 import json
+import os
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -10,8 +11,10 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.elementsource_interface import ElementSourceInterface, ScreenPoint
+from optics_framework.common.image_interface import ImageInterface
 from optics_framework.common.llm_interface import LLMInterface
 from optics_framework.common.models import ApiData, ElementData, ModuleData
+from optics_framework.common.strategies import StrategyManager
 from optics_framework.common.text_interface import TextInterface
 from optics_framework.engines.drivers.appium_popup import AppiumScreen
 from optics_framework.helper.execute import build_linked_list
@@ -59,8 +62,9 @@ def elements(**values):
 
 @dataclass(eq=False)
 class Node:
-    """One element on the phone. A tap on it ``closes`` its layer or ``opens`` another. Only OCR reads an ``ocr`` node;
-    a ``web`` node is found as a web page's point, which carries its text and state, not as an element handle."""
+    """One element on the phone. A tap on it ``closes`` its layer or ``opens`` another. Only OCR reads an ``ocr`` node,
+    template matching finds an ``image`` node by that template's name, and a ``web`` node is found as a web page's
+    point, which carries its text and state, not as an element handle."""
 
     text: str
     at: tuple[int, int]
@@ -69,6 +73,7 @@ class Node:
     closes: bool = False
     opens: "Layer | None" = None
     ocr: bool = False
+    image: str = ""
     web: bool = False
     value: str = ""
     enabled: bool = True
@@ -230,6 +235,26 @@ class PhoneOCR(TextInterface):
         return " ".join(text for _, text, _ in lines), lines
 
 
+class PhoneImages(ImageInterface):
+    """Template matching that finds the nodes shown on ``phone`` whose ``image`` is the template's name."""
+
+    def __init__(self, phone):
+        self.phone = phone
+
+    def find_element(self, input_data, image, index=None):
+        matches = [node for node in self.phone.shown() if node.image and node.image == os.path.basename(str(image))]
+        position = int(index or 0)
+        return (True, matches[position].at, _box(matches[position])) if position < len(matches) else None
+
+    def element_exist(self, input_data, reference_data):
+        found = self.find_element(input_data, reference_data)
+        return (True, found[1], list(found[2])) if found else (False, (None, None), None)
+
+    def assert_elements(self, input_data, elements, rule="any"):
+        hits = [self.find_element(input_data, element) is not None for element in elements]
+        return (any(hits) if rule == "any" else all(hits)), input_data
+
+
 class ScriptedModel(LLMInterface):
     """A self-heal model that sends ``replies`` in turn, then gives up, and keeps each prompt it was sent."""
 
@@ -269,6 +294,15 @@ class PhoneBuilder:
 
     def build(self, cls):
         return cls(self)
+
+
+def phone_screen(phone, ocr=False, images=False, sources=None):
+    """A StrategyManager over ``phone``'s element source, or ``sources``, with OCR and template matching when asked."""
+    return StrategyManager(
+        InstanceFallback(sources or [PhoneSource(phone, PhoneDriver(phone))]),
+        InstanceFallback([PhoneOCR(phone)]) if ocr else None,
+        InstanceFallback([PhoneImages(phone)]) if images else None,
+    )
 
 
 def phone_keywords(phone, output, rules=(), modules=None, llm=None, ocr=False):
