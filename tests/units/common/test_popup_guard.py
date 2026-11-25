@@ -219,11 +219,14 @@ class TestOnFailure:
         assert device.taps == []
         assert run.drain() == [event(app_id=None)]
 
-    def test_a_page_source_that_cannot_be_read(self):
-        device = Device(RATE_US, fails=("read_source",))
-        guard, run, _ = setup(device, rule())
+    @pytest.mark.parametrize(("device", "seen"), [
+        (lambda: Device(RATE_US, fails=("read_source",)), {"platform": None, "app_id": None}),
+        (lambda: Device(MAPS, system_alert=LOCATION, fails=("read_alert",)), {"platform": "ios", "app_id": "Maps"}),
+    ], ids=["a page source that cannot be read", "a driver that cannot read system alerts"])
+    def test_a_screen_it_cannot_read_shows_no_popup(self, device, seen):
+        guard, run, _ = setup(device(), rule())
         assert guard.on_failure() == Outcome(Verdict.NONE)
-        assert run.drain() == [event(platform=None, app_id=None)]
+        assert run.drain() == [event(**seen)]
 
     def test_a_dialog_no_rule_covers(self):
         device = Device(RATE_US)
@@ -295,12 +298,6 @@ class TestOnFailure:
             popup_gone=True, dismissed_in_ms=0, step_count=1, run_count=1,
             screenshots=[f"popup_{RUN}_1_before.png", f"popup_{RUN}_1_after.png"],
         )]
-
-    def test_a_driver_that_cannot_read_system_alerts(self):
-        device = Device(MAPS, system_alert=LOCATION, fails=("read_alert",))
-        guard, run, _ = setup(device, rule())
-        assert guard.on_failure() == Outcome(Verdict.NONE)
-        assert run.drain() == [event(platform="ios", app_id="Maps")]
 
     def test_no_screenshot(self):
         device = Device(RATE_US, fails=("screenshot",))

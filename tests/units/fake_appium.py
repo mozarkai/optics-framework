@@ -145,3 +145,10 @@ def appium_driver(monkeypatch, server, capabilities, **config):
     monkeypatch.setattr(appium_webdriver, "Remote", server.remote)
     sdk = EventSDK(ConfigHandler(Config(**config)))
     return Appium({"url": "http://appium.test:4723", "capabilities": capabilities}, event_sdk=sdk)
+
+
+def started_driver(monkeypatch, server, capabilities, **config):
+    """``appium_driver`` with its session already started on ``server``."""
+    driver = appium_driver(monkeypatch, server, capabilities, **config)
+    driver.start_session()
+    return driver

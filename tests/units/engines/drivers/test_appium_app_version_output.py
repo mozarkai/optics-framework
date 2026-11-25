@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from optics_framework.common.error import Code, OpticsError
-from tests.units.fake_appium import AppiumServer, appium_driver
+from tests.units.fake_appium import AppiumServer, started_driver
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the fake tools are shell scripts")
 
@@ -13,9 +13,7 @@ IOS = {"platformName": "iOS", "appium:automationName": "XCUITest", "appium:bundl
 
 
 def started(monkeypatch, capabilities, device_caps):
-    driver = appium_driver(monkeypatch, AppiumServer(device=device_caps), capabilities)
-    driver.start_session()
-    return driver
+    return started_driver(monkeypatch, AppiumServer(device=device_caps), capabilities)
 
 
 def version_error(driver):
@@ -25,11 +23,19 @@ def version_error(driver):
     return str(caught.value)
 
 
+@pytest.mark.parametrize(("capabilities", "device", "listing", "version", "command"), [
+    (ANDROID, {"deviceUDID": "emulator-5554"}, "  versionCode=7\n    versionName=1.2.3\n", "1.2.3",
+     "adb -s emulator-5554 shell pm dump in.app"),
+    (IOS, {"udid": "00008"}, 'org.other, "1.0", "Other"\nin.app, "4.5.6", "Example"\n', "4.5.6",
+     "ideviceinstaller -u 00008 -l"),
+], ids=["android version name", "ios bundle version"])
+def test_the_version_of_the_app(monkeypatch, tools, capabilities, device, listing, version, command):
+    ran = tools(listing)
+    assert started(monkeypatch, capabilities, device).get_app_version() == version
+    assert ran() == [command]
+
+
 class TestAndroid:
-    def test_the_version_name_of_the_app(self, monkeypatch, tools):
-        ran = tools("  versionCode=7\n    versionName=1.2.3\n")
-        assert started(monkeypatch, ANDROID, {"deviceUDID": "emulator-5554"}).get_app_version() == "1.2.3"
-        assert ran() == ["adb -s emulator-5554 shell pm dump in.app"]
 
     def test_no_adb(self, monkeypatch, tools):
         tools(installed=False)
@@ -37,11 +43,6 @@ class TestAndroid:
 
 
 class TestIos:
-    def test_the_bundle_version_of_the_app(self, monkeypatch, tools):
-        ran = tools('org.other, "1.0", "Other"\nin.app, "4.5.6", "Example"\n')
-        assert started(monkeypatch, IOS, {"udid": "00008"}).get_app_version() == "4.5.6"
-        assert ran() == ["ideviceinstaller -u 00008 -l"]
-
     def test_a_listing_without_the_app_is_shortened(self, monkeypatch, tools):
         tools("\n".join(f"line {index}" for index in range(400)))
         message = version_error(started(monkeypatch, IOS, {}))
