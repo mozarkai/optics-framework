@@ -1,26 +1,15 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 from optics_framework.common.error import Code, OpticsError
-from optics_framework.engines.drivers.appium import Appium
+from tests.units.fake_appium import AppiumServer, appium_driver
 
 
-def _driver_instance(platform: str) -> Appium:
-    webdriver = MagicMock()
-    webdriver.capabilities = {"platformName": platform}
-    instance = Appium.__new__(Appium)
-    instance.driver = webdriver
-    instance.capabilities = {}
-    instance.event_sdk = MagicMock()
-    return instance
-
-
-def test_a_stop_that_the_desktop_host_refuses_fails_the_keyword():
-    instance = _driver_instance("Linux")
-    instance.driver.execute.side_effect = RuntimeError("connection lost")
-
-    with pytest.raises(OpticsError) as excinfo:
-        instance.force_terminate_app("mousepad")
-
-    assert excinfo.value.code == Code.E0401
+def test_a_stop_that_the_desktop_host_refuses_fails_the_keyword(monkeypatch):
+    server = AppiumServer({"optics_terminate_app": RuntimeError("connection lost")})
+    driver = appium_driver(monkeypatch, server, {"platformName": "Linux", "appium:automationName": "Xa11y",
+                                                 "appium:app": "mousepad"})
+    driver.start_session()
+    with pytest.raises(OpticsError) as caught:
+        driver.force_terminate_app("mousepad")
+    assert caught.value.code == Code.E0401
+    assert server.commands("optics_terminate_app") == [("optics_terminate_app", {"appId": "mousepad"})]

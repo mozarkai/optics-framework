@@ -1,86 +1,86 @@
-import subprocess
-from unittest.mock import MagicMock, patch
+"""Get App Version reads the app's version from the device tools, adb on Android and ideviceinstaller on iOS."""
+import sys
 
 import pytest
 
 from optics_framework.common.error import Code, OpticsError
-from optics_framework.engines.drivers.appium import (
-    Appium,
-    _MAX_ERROR_OUTPUT_LINES,
-)
+from tests.units.fake_appium import AppiumServer, appium_driver
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the fake device tools are shell scripts")
+
+TOOL = """#!/bin/sh
+echo "${0##*/} $*" >> "$FAKE_TOOL_ARGS"
+printf '%s' "$FAKE_TOOL_OUTPUT"
+exit "${FAKE_TOOL_STATUS:-0}"
+"""
+ANDROID = {"platformName": "Android", "appium:automationName": "UiAutomator2", "appium:appPackage": "in.app"}
+IOS = {"platformName": "iOS", "appium:automationName": "XCUITest", "appium:bundleId": "in.app"}
 
 
-def _driver_instance(capabilities: dict) -> Appium:
-    instance = Appium.__new__(Appium)
-    instance.driver = None
-    instance.capabilities = capabilities
-    return instance
+@pytest.fixture(scope="session")
+def tools(tmp_path_factory):
+    """adb and ideviceinstaller as links to one script, which macOS checks once, on its first run."""
+    folder = tmp_path_factory.mktemp("tools")
+    (folder / "tool").write_text(TOOL)
+    (folder / "tool").chmod(0o755)
+    for name in ("adb", "ideviceinstaller"):
+        (folder / name).symlink_to(folder / "tool")
+    return folder
 
 
-def _numbered_output(count: int) -> str:
-    return "\n".join(f"line {index}" for index in range(count))
+@pytest.fixture
+def device(tools, tmp_path, monkeypatch):
+    """A device whose tools print ``output`` and exit with ``status``; returns the command lines they were given."""
+    ran = tmp_path / "ran"
+
+    def answer(output="", status=0, installed=True):
+        monkeypatch.setenv("PATH", str(tools if installed else tmp_path))
+        monkeypatch.setenv("FAKE_TOOL_ARGS", str(ran))
+        monkeypatch.setenv("FAKE_TOOL_OUTPUT", output)
+        monkeypatch.setenv("FAKE_TOOL_STATUS", str(status))
+        return lambda: ran.read_text().splitlines() if ran.exists() else []
+    return answer
 
 
-class TestAndroidAppVersionErrorOutput:
-    def _instance(self) -> Appium:
-        instance = _driver_instance({"appPackage": "com.example.app"})
-        instance._get_android_device_serial = MagicMock(return_value=None)
-        return instance
-
-    def test_command_failure_without_output_says_no_output(self):
-        instance = self._instance()
-
-        with patch("subprocess.check_output", side_effect=OSError("adb not found")):
-            with pytest.raises(OpticsError) as excinfo:
-                instance._get_android_app_version()
-
-        assert "Output:\n<no output>" in str(excinfo.value)
-
-    def test_version_name_is_returned_without_an_error(self):
-        instance = self._instance()
-
-        with patch("subprocess.check_output", return_value="    versionName=1.2.3\n"):
-            assert instance._get_android_app_version() == "1.2.3"
+def started(monkeypatch, capabilities, device_caps):
+    driver = appium_driver(monkeypatch, AppiumServer(device=device_caps), capabilities)
+    driver.start_session()
+    return driver
 
 
-class TestIosAppVersionErrorOutput:
-    def _instance(self) -> Appium:
-        instance = _driver_instance({"bundleId": "com.example.app"})
-        instance._get_ios_device_udid = MagicMock(return_value=None)
-        return instance
+def version_error(driver):
+    with pytest.raises(OpticsError) as caught:
+        driver.get_app_version()
+    assert caught.value.code == Code.E0401
+    return str(caught.value)
 
-    def test_missing_bundle_truncates_the_listing(self):
-        instance = self._instance()
 
-        with patch("subprocess.check_output", return_value=_numbered_output(400)):
-            with pytest.raises(OpticsError) as excinfo:
-                instance._get_ios_app_version()
+class TestAndroid:
+    def test_the_version_name_of_the_app(self, monkeypatch, device):
+        ran = device("  versionCode=7\n    versionName=1.2.3\n")
+        assert started(monkeypatch, ANDROID, {"deviceUDID": "emulator-5554"}).get_app_version() == "1.2.3"
+        assert ran() == ["adb -s emulator-5554 shell pm dump in.app"]
 
-        assert excinfo.value.code == Code.E0401
-        assert f"… ({400 - _MAX_ERROR_OUTPUT_LINES} lines omitted)" in str(excinfo.value)
+    def test_no_adb(self, monkeypatch, device):
+        device(installed=False)
+        assert "Output:\n<no output>" in version_error(started(monkeypatch, ANDROID, {}))
 
-    def test_command_failure_reports_no_output_when_nothing_was_captured(self):
-        instance = self._instance()
-        failure = subprocess.CalledProcessError(returncode=1, cmd=["ideviceinstaller"])
 
-        with patch("subprocess.check_output", side_effect=failure):
-            with pytest.raises(OpticsError) as excinfo:
-                instance._get_ios_app_version()
+class TestIos:
+    def test_the_bundle_version_of_the_app(self, monkeypatch, device):
+        ran = device('org.other, "1.0", "Other"\nin.app, "4.5.6", "Example"\n')
+        assert started(monkeypatch, IOS, {"udid": "00008"}).get_app_version() == "4.5.6"
+        assert ran() == ["ideviceinstaller -u 00008 -l"]
 
-        assert "Output:\n<no output>" in str(excinfo.value)
+    def test_a_listing_without_the_app_is_shortened(self, monkeypatch, device):
+        device("\n".join(f"line {index}" for index in range(400)))
+        message = version_error(started(monkeypatch, IOS, {}))
+        assert "line 9\n… (380 lines omitted)\nline 390" in message
 
-    def test_missing_binary_keeps_the_install_hint(self):
-        instance = self._instance()
+    def test_a_failed_listing_without_output(self, monkeypatch, device):
+        device(status=1)
+        assert "Output:\n<no output>" in version_error(started(monkeypatch, IOS, {}))
 
-        with patch("subprocess.check_output", side_effect=FileNotFoundError()):
-            with pytest.raises(OpticsError) as excinfo:
-                instance._get_ios_app_version()
-
-        assert "brew install ideviceinstaller" in str(excinfo.value)
-
-    def test_bundle_version_is_returned_without_an_error(self):
-        instance = self._instance()
-        listing = 'com.example.app, "4.5.6", "Example"'
-
-        with patch("subprocess.check_output", return_value=listing):
-            assert instance._get_ios_app_version() == "4.5.6"
+    def test_no_ideviceinstaller(self, monkeypatch, device):
+        device(installed=False)
+        assert "brew install ideviceinstaller" in version_error(started(monkeypatch, IOS, {}))

@@ -1,5 +1,6 @@
 """Shared fixtures for the unit suite."""
 import json
+import logging
 import tempfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -24,6 +25,24 @@ def fake_time(monkeypatch):
         monkeypatch.setattr(module, "time", clock)
     monkeypatch.setattr(agent_core_module, "asyncio", SimpleNamespace(sleep=clock.async_sleep))
     return clock
+
+
+class _Kept(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.messages = []
+
+    def emit(self, record):
+        self.messages.append((record.levelname, record.getMessage()))
+
+
+@pytest.fixture
+def internal_log():
+    """The level and text of each message logged on optics.internal, which does not propagate to caplog."""
+    kept, logger = _Kept(), logging.getLogger("optics.internal")
+    logger.addHandler(kept)
+    yield kept.messages
+    logger.removeHandler(kept)
 
 
 @pytest.fixture
