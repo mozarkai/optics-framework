@@ -14,7 +14,8 @@ Answers schema (normalised):
   desktop:        platform_name (Mac | Linux | Windows), app, appium_url
   web-selenium:   selenium_url
   web-playwright: browser, headless (bool)
-  bluetooth:      ble_platform, ble_serial, width, height, camera_url
+  bluetooth:      ble_platform, ble_serial, width, height, ble_screen (camera | usb | none),
+                  camera_url
   common:         ocr (bool), log_level (str, default "INFO")
 """
 import os
@@ -44,14 +45,14 @@ _ELEMENTS_SOURCES_BY_DRIVER = {
     "appium": ["appium_find_element", "appium_page_source", "appium_web", "appium_screenshot"],
     "selenium": ["selenium_find_element", "selenium_page_source", "selenium_screenshot"],
     "playwright": ["playwright_find_element", "playwright_page_source", "playwright_screenshot"],
-    "ble": ["camera_screenshot"],
+    "ble": ["camera_screenshot", "usb_screenshot"],
 }
 
 _SOURCE_GROUP_TITLES = {
     "appium": "Appium locators / page source / web pages / screenshots:",
     "selenium": "Selenium locators / page source / screenshots:",
     "playwright": "Playwright locators / page source / screenshots:",
-    "ble": "A camera over the screen (works with any driver):",
+    "ble": "A camera over the screen, or USB screenshots of a phone (work with any driver):",
 }
 
 _CAPABILITIES_KEY = "      capabilities:"
@@ -116,8 +117,10 @@ def _ask_bluetooth(answers: dict) -> None:
         default=_detected_dongle())
     answers["width"] = _ask_pixels("Screen width in pixels", 1080)
     answers["height"] = _ask_pixels("Screen height in pixels", 1920)
-    answers["camera_url"] = _ask(
-        "Camera screenshot URL (empty: no camera)", default="")
+    screens = ["camera", "usb", "none"] if answers["ble_platform"] in ("ios", "android") else ["camera", "none"]
+    answers["ble_screen"] = _ask("How does Optics see the screen?", choices=screens, default="camera")
+    while answers["ble_screen"] == "camera" and not answers.get("camera_url"):
+        answers["camera_url"] = _ask("Camera screenshot URL").strip()
 
 
 def prompt_project_config(domain: str | None = None) -> dict:
@@ -176,7 +179,7 @@ def prompt_project_config(domain: str | None = None) -> dict:
     answers["ocr_engine"] = preferred_local_engine()
     answers["ocr"] = _confirm(
         f"Also find elements by on-screen text ({answers['ocr_engine']})? Useful when there "
-        "are no stable locators.", default=bool(answers.get("camera_url")))
+        "are no stable locators.", default=_reads_screen(answers))
     answers["log_level"] = _ask(
         "Log level", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO")
@@ -319,10 +322,19 @@ def _camera_capabilities(answers: dict) -> list[str]:
     ]
 
 
+def _reads_screen(answers: dict) -> bool:
+    return bool(answers.get("camera_url")) or answers.get("ble_screen") == "usb"
+
+
 def _elements_sources_section(driver: str, answers: dict) -> list[str]:
     wanted = _ELEMENTS_SOURCES_BY_DRIVER[driver]
-    if driver == "ble" and not answers.get("camera_url"):
-        wanted = []
+    if driver == "ble":
+        if answers.get("ble_screen") == "usb":
+            wanted = ["usb_screenshot"]
+        elif answers.get("camera_url"):
+            wanted = ["camera_screenshot"]
+        else:
+            wanted = []
     lines = ["elements_sources:"]
     for group, sources in _ELEMENTS_SOURCES_BY_DRIVER.items():
         lines.append(f"  # {_SOURCE_GROUP_TITLES[group]}")

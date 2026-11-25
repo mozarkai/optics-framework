@@ -247,6 +247,9 @@ class BLEDriver(DriverInterface):
             return opens_apps and self.platform.last_app_card is not None
         return super().supports(capability)
 
+    def device_platform(self) -> Optional[str]:
+        return self.capabilities.platform
+
     def get_driver_session_id(self) -> Optional[str]:
         return self._dongle.identity
 

@@ -105,6 +105,20 @@ elements_sources:
         token: <bearer-token>
 ```
 
+### usb_screenshot
+- What it does: Reads the screen of a phone on USB, for a `ble` project that has no webcam. It only takes screenshots: taps still go through the dongle, and elements come from OCR and template matching.
+- Android: `adb exec-out screencap -p`, with USB debugging on. iOS: `xcrun devicectl device capture screenshot`, on a Mac with Xcode, the phone in Developer Mode and trusting the Mac.
+- `capabilities.serial`: the Android serial or iOS UDID; leave it out when one phone is attached.
+- `capabilities.platform`: `android` or `ios`; taken from the `ble` driver when left out.
+- The `ble` `frame` must equal the screenshot size; `optics doctor` checks it.
+- A remote `optics serve` or HTTP MCP caller cannot use it.
+- Tips: a screen that blocks screenshots (Android `FLAG_SECURE`) comes back black and fails with `E0303`, so use a webcam for those apps. Some apps refuse to run while USB debugging is on. An iOS screenshot takes 1 to 2.5 s.
+```bash
+elements_sources:
+  - usb_screenshot:
+      enabled: true
+```
+
 ### selenium_find_element
 - What it does: Locates web elements using Selenium strategies.
 ```bash

@@ -314,6 +314,10 @@ class DriverInterface(ABC):
     def go_back(self, event_name: Optional[str] = None) -> None:
         self._unsupported("go_back")
 
+    def device_platform(self) -> Optional[str]:
+        """The device family the driver drives, such as ``android`` or ``ios``; None when it does not know."""
+        return None
+
     def point_at(self, point: Optional[tuple[float, float]]) -> None:
         """Show the pointer at ``point``, as fractions of the screen's width and height, without pressing; ``None`` moves it off the screen."""
         self._unsupported("point_at")
