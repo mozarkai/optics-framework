@@ -1,6 +1,8 @@
 """Shared fixtures for the unit suite."""
+import io
 import json
 import logging
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -54,6 +56,19 @@ def tools(tool_folder, tmp_path, monkeypatch):
         return lambda: ran.read_text().splitlines() if ran.exists() else []
     reply.folder = tool_folder
     return reply
+
+
+class _Terminal(io.StringIO):
+    def isatty(self):
+        return True
+
+
+@pytest.fixture
+def typed(monkeypatch):
+    """``typed(*lines)``: what the user types at the terminal, one line per answer."""
+    def type_lines(*lines):
+        monkeypatch.setattr(sys, "stdin", _Terminal("".join(f"{line}\n" for line in lines)))
+    return type_lines
 
 
 class _Kept(logging.Handler):
