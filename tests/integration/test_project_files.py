@@ -1,7 +1,4 @@
 """optics dry_run on a project folder whose files are written wrong: the run stops and names the file to fix."""
-import subprocess  # nosec B404
-import sys
-
 import pytest
 
 pytestmark = pytest.mark.black_box
@@ -20,11 +17,9 @@ elements_sources:
 """
 
 
-def dry_run(folder):
-    return subprocess.run(  # nosec B603
-        [sys.executable, "-m", "optics_framework.helper.cli", "dry_run", str(folder), "--no-use-printer"],
-        capture_output=True, text=True, timeout=120,
-    )
+@pytest.fixture
+def dry_run(cli):
+    return lambda folder: cli("dry_run", str(folder), "--no-use-printer")
 
 
 @pytest.fixture
@@ -35,7 +30,7 @@ def project(tmp_path):
     return tmp_path
 
 
-def test_an_elements_file_without_a_locator_column_stops_the_run(project):
+def test_an_elements_file_without_a_locator_column_stops_the_run(project, dry_run):
     (project / "elements.csv").write_text("Element_Name,Element_Locator\nSeven,//button[@id='Seven']\n")
     result = dry_run(project)
     assert result.returncode != 0
@@ -49,14 +44,14 @@ def test_an_elements_file_without_a_locator_column_stops_the_run(project):
     ("products.csv", b"element_name,price\nmilk,2\n"),
     ("export.csv", b"\xff\xfe\x00binary"),
 ], ids=["locator_column", "data_file_with_element_name", "binary_csv"])
-def test_an_elements_file_resolves_beside_other_csv_files(project, name, content):
+def test_an_elements_file_resolves_beside_other_csv_files(project, dry_run, name, content):
     (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
     if name:
         (project / name).write_bytes(content)
     assert dry_run(project).returncode == 0
 
 
-def test_a_step_without_the_params_its_keyword_needs_fails(project):
+def test_a_step_without_the_params_its_keyword_needs_fails(project, dry_run):
     (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
     (project / "modules.csv").write_text("module_name,module_step,param_1\nPress Seven,Press Element,\n")
     assert dry_run(project).returncode != 0
@@ -65,14 +60,14 @@ def test_a_step_without_the_params_its_keyword_needs_fails(project):
     assert "'element'" in junit
 
 
-def test_a_passed_dry_run_says_what_it_did_not_check(project):
+def test_a_passed_dry_run_says_what_it_did_not_check(project, dry_run):
     (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,//button[@id='Seven']\n")
     result = dry_run(project)
     assert result.returncode == 0
     assert "does not check locators" in result.stdout
 
 
-def test_a_value_that_holds_a_reference_is_substituted_once(project):
+def test_a_value_that_holds_a_reference_is_substituted_once(project, dry_run):
     (project / "elements.csv").write_text("Element_Name,Element_ID\nsnippet,${literal}\n")
     (project / "modules.csv").write_text("module_name,module_step,param_1\nPress Seven,Enter Text Direct,prefix ${snippet}\n")
     assert dry_run(project).returncode == 0

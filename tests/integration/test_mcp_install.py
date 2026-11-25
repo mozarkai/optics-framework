@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-import subprocess
 import sys
 
 import pytest
@@ -50,14 +49,17 @@ def _fake_claude(tmp_path, entries=None):
     return f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin"
 
 
-def _install(tmp_path, path, *flags, **env):
-    state = tmp_path / "claude.json"
-    ran = subprocess.run(
-        [sys.executable, "-m", "optics_framework.helper.cli", "mcp", "install", *flags],
-        capture_output=True, text=True, cwd=tmp_path, timeout=120, check=False,
-        env={**os.environ, "PATH": path, "FAKE_CLAUDE_STATE": str(state), "CLAUDE_CONFIG_DIR": str(tmp_path), **env},
-    )
-    return ran, json.loads(state.read_text()) if state.exists() else {}
+@pytest.fixture
+def install(tmp_path, cli, monkeypatch):
+    def run(path, *flags, **env):
+        state = tmp_path / "claude.json"
+        monkeypatch.chdir(tmp_path)
+        for name, value in {"PATH": path, "FAKE_CLAUDE_STATE": str(state), "CLAUDE_CONFIG_DIR": str(tmp_path), **env}.items():
+            monkeypatch.setenv(name, value)
+        ran = cli("mcp", "install", *flags)
+        return ran, json.loads(state.read_text()) if state.exists() else {}
+
+    return run
 
 
 def _tools(command, cwd):
@@ -69,8 +71,8 @@ def _tools(command, cwd):
     return asyncio.run(handshake())
 
 
-def test_install_replaces_the_old_entries_with_an_absolute_command_for_every_folder(tmp_path):
-    ran, entries = _install(tmp_path, _fake_claude(tmp_path, OLD))
+def test_install_replaces_the_old_entries_with_an_absolute_command_for_every_folder(tmp_path, install):
+    ran, entries = install(_fake_claude(tmp_path, OLD))
 
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert list(entries) == ["user:optics"]
@@ -80,19 +82,19 @@ def test_install_replaces_the_old_entries_with_an_absolute_command_for_every_fol
     assert "start_session" in _tools(command, tmp_path)
 
 
-def test_a_failed_install_keeps_the_entries_that_worked(tmp_path):
-    ran, entries = _install(tmp_path, _fake_claude(tmp_path, OLD), FAKE_CLAUDE_BROKEN="1")
+def test_a_failed_install_keeps_the_entries_that_worked(tmp_path, install):
+    ran, entries = install(_fake_claude(tmp_path, OLD), FAKE_CLAUDE_BROKEN="1")
 
     assert ran.returncode != 0
     assert entries == OLD
 
 
-def test_install_names_the_entries_that_outrank_the_user_entry(tmp_path):
+def test_install_names_the_entries_that_outrank_the_user_entry(tmp_path, install):
     project = {"mcpServers": {"optics": {"command": "/old/optics", "args": ["mcp"]}}}
     (tmp_path / ".mcp.json").write_text(json.dumps(project))
     (tmp_path / ".claude.json").write_text(json.dumps({"projects": {"/elsewhere": project, "/plain": {"mcpServers": {}}}}))
 
-    ran, _ = _install(tmp_path, _fake_claude(tmp_path))
+    ran, _ = install(_fake_claude(tmp_path))
 
     assert f"{tmp_path / '.mcp.json'}: remove optics" in ran.stdout
     assert "/elsewhere: run `claude mcp remove --scope local optics` there" in ran.stdout
@@ -100,23 +102,23 @@ def test_install_names_the_entries_that_outrank_the_user_entry(tmp_path):
     assert json.loads((tmp_path / ".mcp.json").read_text()) == project
 
 
-def test_install_registers_the_toolset_it_was_given(tmp_path):
-    ran, entries = _install(tmp_path, _fake_claude(tmp_path), "--toolset", "full")
+def test_install_registers_the_toolset_it_was_given(tmp_path, install):
+    ran, entries = install(_fake_claude(tmp_path), "--toolset", "full")
 
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert entries["user:optics"][-2:] == ["--toolset", "full"]
 
 
-def test_install_refuses_the_http_transport(tmp_path):
-    ran, entries = _install(tmp_path, _fake_claude(tmp_path), "--transport", "http")
+def test_install_refuses_the_http_transport(tmp_path, install):
+    ran, entries = install(_fake_claude(tmp_path), "--transport", "http")
 
     assert ran.returncode != 0
     assert "stdio" in ran.stderr
     assert not entries
 
 
-def test_install_without_claude_prints_the_config_for_any_client(tmp_path):
-    ran, entries = _install(tmp_path, f"/usr/bin{os.pathsep}/bin")
+def test_install_without_claude_prints_the_config_for_any_client(tmp_path, install):
+    ran, entries = install(f"/usr/bin{os.pathsep}/bin")
 
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert not entries
