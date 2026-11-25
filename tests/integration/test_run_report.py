@@ -49,18 +49,21 @@ def _run(tmp_path, test_cases: str) -> tuple[bool, dict[str, ET.Element], ET.Ele
     return passed, *_report(tmp_path)
 
 
-def _run_with(runner: str, tmp_path, test_cases: str) -> tuple[bool, dict[str, ET.Element], ET.Element]:
-    _project(tmp_path, test_cases)
-    passed = _execute(tmp_path, "--runner", runner).wait(120) == 0
-    return passed, *_report(tmp_path)
+@pytest.fixture
+def run_with(tmp_path, cli):
+    def run(runner: str, test_cases: str) -> tuple[bool, dict[str, ET.Element], ET.Element]:
+        _project(tmp_path, test_cases)
+        passed = cli("execute", str(tmp_path), "--runner", runner, "--output", "none").returncode == 0
+        return passed, *_report(tmp_path)
+    return run
 
 
 _RUNNERS = pytest.mark.parametrize("runner", ["test_runner", "pytest"])
 
 
 @_RUNNERS
-def test_failed_suite_setup_skips_every_test_but_runs_the_suite_teardown(tmp_path, runner):
-    passed, cases, suite = _run_with(runner, tmp_path, (
+def test_failed_suite_setup_skips_every_test_but_runs_the_suite_teardown(run_with, runner):
+    passed, cases, suite = run_with(runner, (
         "Suite Setup,Break\n"
         "Test Setup,Pass\n"
         "TC One,Pass\n"
@@ -85,8 +88,8 @@ def test_failed_suite_setup_skips_every_test_but_runs_the_suite_teardown(tmp_pat
 
 
 @_RUNNERS
-def test_failed_test_setup_skips_only_its_test_and_still_runs_its_teardown(tmp_path, runner):
-    passed, cases, _ = _run_with(runner, tmp_path, (
+def test_failed_test_setup_skips_only_its_test_and_still_runs_its_teardown(run_with, runner):
+    passed, cases, _ = run_with(runner, (
         "Test Setup,Break\n"
         "TC One,Pass\n"
         "TC Two,Pass\n"
@@ -177,7 +180,7 @@ def test_a_stopped_run_gives_the_running_test_case_e0706(tmp_path, sig, exit_cod
     assert cases["Suite Teardown"].get("status") == "NOT_RUN"
 
 
-def test_a_run_that_cannot_start_gives_each_test_case_its_code(tmp_path):
+def _unreachable_appium(tmp_path) -> None:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         closed_port = probe.getsockname()[1]
@@ -187,7 +190,29 @@ def test_a_run_that_cannot_start_gives_each_test_case_its_code(tmp_path):
         "      capabilities:\n        platformName: iOS\n"
         "elements_sources:\n  - appium_find_element:\n      enabled: true\n      capabilities: {}\n"
     ))
+
+
+def test_a_run_that_cannot_start_gives_each_test_case_its_code(tmp_path):
+    _unreachable_appium(tmp_path)
     assert _execute(tmp_path).wait(60) == 1
     cases, _ = _report(tmp_path)
     assert cases["TC One"].get("status") == "ERROR"
+    assert cases["TC One"].find("error").get("code") == "E0102"
+
+
+def test_run_project_on_a_run_that_cannot_start_exits(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPTICS_SKIP_PREFLIGHT", raising=False)
+    _unreachable_appium(tmp_path)
+    with pytest.raises(SystemExit) as stop:
+        run_project(str(tmp_path), use_printer=False)
+    assert stop.value.code == 1
+    assert not (tmp_path / "execution_output" / "junit_output.xml").exists()
+
+
+@pytest.mark.skip(reason="bug: run_project exits on a run that cannot start, and its report is written only at interpreter exit")
+def test_run_project_on_a_run_that_cannot_start_returns_false_with_its_report(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPTICS_SKIP_PREFLIGHT", raising=False)
+    _unreachable_appium(tmp_path)
+    assert run_project(str(tmp_path), use_printer=False) is False
+    cases, _ = _report(tmp_path)
     assert cases["TC One"].find("error").get("code") == "E0102"

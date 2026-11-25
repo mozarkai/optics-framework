@@ -1,12 +1,16 @@
 """Root test configuration shared across the whole suite."""
 from __future__ import annotations
 
+import subprocess  # nosec B404
+import sys
+
 import pytest
 from prompt_toolkit.application import create_app_session
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
 from optics_framework.common import logging_config
+from optics_framework.helper.cli import main
 from tests.mock_servers.single_server import start_server
 
 _BOX_MARKERS = {"white_box", "black_box", "hybrid"}
@@ -20,6 +24,26 @@ def pytest_collection_modifyitems(config, items):
             continue
         if not any(m.name in _BOX_MARKERS for m in item.iter_markers()):
             item.add_marker(pytest.mark.white_box)
+
+
+@pytest.fixture
+def cli(monkeypatch, capfd):
+    """Run the optics CLI in this process, as a shell would: arguments in, exit code and output back."""
+    def run(*args: str) -> subprocess.CompletedProcess:
+        monkeypatch.setattr(sys, "argv", ["optics", *args])
+        monkeypatch.setenv("OPTICS_NO_UPDATE_CHECK", "1")
+        capfd.readouterr()
+        try:
+            main()
+            code = 0
+        except SystemExit as stop:
+            code = stop.code if isinstance(stop.code, int) else int(stop.code is not None)
+            if isinstance(stop.code, str):
+                print(stop.code, file=sys.stderr)
+        out = capfd.readouterr()
+        return subprocess.CompletedProcess(["optics", *args], code, out.out, out.err)
+
+    return run
 
 
 @pytest.fixture(autouse=True)
