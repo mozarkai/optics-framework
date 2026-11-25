@@ -155,7 +155,7 @@ class _Hang(BaseHTTPRequestHandler):
 def test_a_stopped_run_gives_the_running_test_case_e0706(tmp_path, sig, exit_code):
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Hang)
     server.called, server.release = threading.Event(), threading.Event()
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     try:
         (tmp_path / "apis.yaml").write_text(
             "api:\n  collections:\n    slow:\n      name: Slow\n"

@@ -22,6 +22,40 @@ def fake_time(monkeypatch):
     return clock
 
 
+TOOL = """#!/bin/sh
+echo "${0##*/} $*" >> "$FAKE_TOOL_LOG"
+printf '%s' "$FAKE_TOOL_OUTPUT"
+exit "${FAKE_TOOL_STATUS:-0}"
+"""
+
+
+@pytest.fixture(scope="session")
+def tool_folder(tmp_path_factory):
+    """One script linked under each tool's name: macOS checks a new executable on its first run, about 0.5 s a file."""
+    folder = tmp_path_factory.mktemp("tools")
+    (folder / "tool").write_text(TOOL)
+    (folder / "tool").chmod(0o755)
+    for name in ("adb", "ideviceinstaller", "python"):
+        (folder / name).symlink_to(folder / "tool")
+    return folder
+
+
+@pytest.fixture
+def tools(tool_folder, tmp_path, monkeypatch):
+    """Fake device and installer tools on PATH. ``reply(output, status, installed)`` sets what each prints and exits
+    with, or leaves them off PATH, and returns a function that lists the command lines they ran."""
+    ran = tmp_path / "ran"
+
+    def reply(output="", status=0, installed=True):
+        monkeypatch.setenv("PATH", str(tool_folder if installed else tmp_path))
+        monkeypatch.setenv("FAKE_TOOL_LOG", str(ran))
+        monkeypatch.setenv("FAKE_TOOL_OUTPUT", output)
+        monkeypatch.setenv("FAKE_TOOL_STATUS", str(status))
+        return lambda: ran.read_text().splitlines() if ran.exists() else []
+    reply.folder = tool_folder
+    return reply
+
+
 class _Kept(logging.Handler):
     def __init__(self):
         super().__init__(logging.DEBUG)
