@@ -8,17 +8,8 @@ from optics_framework.common.error import Code, OpticsError
 from optics_framework.optics import Optics
 from tests.units.popup_helpers import rule, rule_dict
 
-CONTACT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '../../optics_framework/samples/contact/config.yaml')
 MOCK_API_YAML_PATH = os.path.join(os.path.dirname(__file__), '../mock_servers/api.yaml')
 APPIUM_ONLY = {"driver_sources": [{"appium": {"enabled": True, "capabilities": {"platformName": "Android"}}}], "elements_sources": []}
-
-
-@pytest.fixture
-def contact_config():
-    # The contact sample enables easyocr; skip rather than pull the torch stack into CI.
-    pytest.importorskip("easyocr", reason="contact sample config enables the easyocr engine")
-    with open(CONTACT_CONFIG_PATH, 'r') as f:
-        return yaml.safe_load(f)
 
 
 @pytest.fixture
@@ -40,32 +31,26 @@ def _load_api_yaml_pointed_at(base_url):
 FIELDS_BEYOND_THE_SOURCES = {"ai_self_heal": True, "strict_element_match": True, "halt_duration": 0.5}
 
 
-def test_setup_from_file_keeps_every_config_key(tmp_path, contact_config):
+def test_setup_from_file_keeps_every_config_key(tmp_path):
     path = tmp_path / "config.yaml"
-    path.write_text(yaml.safe_dump({**contact_config, **FIELDS_BEYOND_THE_SOURCES}), encoding="utf-8")
+    path.write_text(yaml.safe_dump({**APPIUM_ONLY, **FIELDS_BEYOND_THE_SOURCES}), encoding="utf-8")
     optics = Optics()
     optics.setup_from_file(str(path))
     assert {key: getattr(optics.config, key) for key in FIELDS_BEYOND_THE_SOURCES} == FIELDS_BEYOND_THE_SOURCES
     optics.quit()
 
 
-def test_api_token_and_otp_flow(mock_api_server, contact_config):
-    optics = Optics()
-    optics.setup(config=contact_config)
+def test_api_token_and_otp_flow(mock_api_server, optics):
     optics.add_api(_load_api_yaml_pointed_at(mock_api_server))
     optics.invoke_api("mock.token")
     optics.add_element("access_token", optics.get_element_value("access_token")[0])
     optics.add_element("userId", optics.get_element_value("userId")[0])
     optics.invoke_api("mock.sendotp")
     assert optics.get_element_value("txnType")[0] == "GEN"
-    optics.quit()
 
 
-def test_date_evaluate_adds_day(contact_config):
-    optics = Optics()
-    optics.setup(config=contact_config)
+def test_date_evaluate_adds_day(optics):
     assert optics.date_evaluate('tomorrow', '2025-08-14', '+1 day') == '15 August'
-    optics.quit()
 
 
 def test_setup_with_a_popup_rule_that_cannot_work():
