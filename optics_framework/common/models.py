@@ -413,7 +413,12 @@ def _invalid_field(problem: Any, data: Any, path: str) -> str:
     for key in problem["loc"]:
         node = _child(node, key)
         name = node.get("name") if isinstance(key, int) and isinstance(node, dict) else None
-        path += f"[{name!r}]" if isinstance(name, str) else f".{key}" if path else str(key)
+        if isinstance(name, str):
+            path += f"[{name!r}]"
+        elif path:
+            path += f".{key}"
+        else:
+            path = str(key)
     reason = problem["msg"].removeprefix("Value error, ")
     value = problem.get("input")
     shown = problem["type"] != "missing" and isinstance(value, (str, int, float, bool))

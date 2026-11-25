@@ -780,7 +780,7 @@ class ActionKeyword:
         self._save_screenshot_if_available(screenshot_np, "press_by_percentage")
         self.driver.press_percentage_coordinates(x, y, count, event_name=event_name)
 
-    def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:
+    def press_by_coordinates(self, coor_x: str, coor_y: str, repeat: str = "1", event_name: Optional[str] = None) -> None:  # NOSONAR repeat is part of the keyword's CSV signature
         """
         Press an element by absolute coordinates.
 

@@ -21,6 +21,7 @@ from optics_framework.api.keywords import build_keywords
 from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
+EXECUTION_FAILED = "Execution failed"
 
 class ExecutionParams(BaseModel):
     """Execution parameters with Pydantic validation."""
@@ -82,7 +83,7 @@ class BatchExecutor(Executor):
             ))
             return runner.result_printer.test_state
         except Exception as e:
-            await event_manager.publish_event(_execution_event(session.session_id, EventStatus.FAIL, "Execution failed", e))
+            await event_manager.publish_event(_execution_event(session.session_id, EventStatus.FAIL, EXECUTION_FAILED, e))
             raise
 
 
@@ -350,11 +351,11 @@ class ExecutionEngine:
             return await executor.execute(session, runner)
         except Exception as e:
             await event_manager.publish_event(
-                _execution_event(params.session_id, EventStatus.ERROR, "Execution failed", e)
+                _execution_event(params.session_id, EventStatus.ERROR, EXECUTION_FAILED, e)
             )
             if isinstance(e, OpticsError):
                 raise
-            raise OpticsError(Code.E0701, message="Execution failed", cause=e) from e
+            raise OpticsError(Code.E0701, message=EXECUTION_FAILED, cause=e) from e
 
     async def _drain_events_and_shutdown(self, event_manager: EventManager) -> None:
         """Wait for event queue to drain (with timeout), then shutdown."""
@@ -405,12 +406,12 @@ class ExecutionEngine:
                 return await self._run_executor(executor, session, runner, event_manager, params)
             except Exception as e:
                 await event_manager.publish_event(
-                    _execution_event(params.session_id, EventStatus.FAIL, "Execution failed", e)
+                    _execution_event(params.session_id, EventStatus.FAIL, EXECUTION_FAILED, e)
                 )
                 internal_logger.error("Execution error in session %s: %s", params.session_id, e)
                 if isinstance(e, OpticsError):
                     raise
-                raise OpticsError(Code.E0701, message="Execution failed", cause=e) from e
+                raise OpticsError(Code.E0701, message=EXECUTION_FAILED, cause=e) from e
             finally:
                 if hasattr(runner, "result_printer") and runner.result_printer:
                     internal_logger.debug("Stopping result printer live display")

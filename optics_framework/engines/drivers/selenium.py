@@ -4,7 +4,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 from optics_framework.common.utils import TEXT_OR_VALUE_JS, SpecialKey, strip_sensitive_prefix
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.session_liveness import is_webdriver_server_unreachable
@@ -307,7 +307,7 @@ class SeleniumDriver(DriverInterface):
         """Selenium does not support raw keycodes. Log a warning."""
         self._raise_action_not_supported()
 
-    def enter_text_using_keyboard(self, text: Union[str, SpecialKey], event_name: Optional[str] = None):
+    def enter_text_using_keyboard(self, text: str | SpecialKey, event_name: Optional[str] = None):
         key_map = {
             SpecialKey.ENTER: Keys.ENTER,
             SpecialKey.TAB: Keys.TAB,

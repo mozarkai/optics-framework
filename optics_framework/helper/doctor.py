@@ -756,13 +756,14 @@ def _row_text(row: Check, name_width: int, glyphs: _Glyphs) -> Text:
     borders to break when a narrow terminal wraps a long detail string."""
     glyph = glyphs.status.get(row.status, "•")
     style = _STATUS_STYLE.get(row.status, "")
-    text = Text("  ")
-    text.append(glyph, style=style)
-    text.append(" " * max(1, glyphs.width - cell_len(glyph)))
-    text.append(row.name.ljust(name_width))
-    text.append("  ")
-    text.append(row.detail)
-    return text
+    return Text.assemble(
+        "  ",
+        (glyph, style),
+        " " * max(1, glyphs.width - cell_len(glyph)),
+        row.name.ljust(name_width),
+        "  ",
+        row.detail,
+    )
 
 
 def _hint_text(hint: str, arrow: str) -> Text:

@@ -3,7 +3,7 @@ import logging
 import threading
 import time
 from enum import Enum
-from typing import Union, Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
 from optics_framework.common.logging_config import mask_secret_values
@@ -47,7 +47,7 @@ class Event(BaseModel):
         default_factory=dict, description="Additional metadata (e.g., session_id for test_case)")
     timestamp: float = Field(default_factory=time.time, description="Event creation time in seconds")
     # NEW FIELDS
-    args: Optional[Union[List[Any], Dict[str, Any]]] = Field(default=None, description="Arguments passed to the keyword (if applicable)")
+    args: Optional[List[Any] | Dict[str, Any]] = Field(default=None, description="Arguments passed to the keyword (if applicable)")
     start_time: Optional[float] = Field(default=None, description="Start time of keyword/module execution (seconds since epoch)")
     end_time: Optional[float] = Field(default=None, description="End time of keyword/module execution (seconds since epoch)")
     elapsed: Optional[float] = Field(default=None, description="Elapsed time for execution (seconds)")
@@ -118,14 +118,14 @@ class EventManager:
                     try:
                         await subscriber.on_event(event)
                     except Exception as e:
-                        internal_logger.error(
+                        internal_logger.exception(
                             f"Error in subscriber {subscriber_id}: {e}")
                 self.event_queue.task_done()
             except asyncio.CancelledError:
                 internal_logger.debug("Event processing loop cancelled")
                 raise
             except Exception as e:
-                internal_logger.error(f"Error processing event: {e}")
+                internal_logger.exception(f"Error processing event: {e}")
         internal_logger.debug("Event processing loop stopped")
 
     async def publish_event(self, event: Event):
@@ -174,7 +174,7 @@ class EventManager:
                 try:
                     subscriber.close()
                 except Exception as e:
-                    internal_logger.error(f"Error while closing subscriber {subscriber_id}: {e}")
+                    internal_logger.exception(f"Error while closing subscriber {subscriber_id}: {e}")
 
         self.dump_state()
         self.stop()

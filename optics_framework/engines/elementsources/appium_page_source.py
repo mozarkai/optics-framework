@@ -90,7 +90,7 @@ class AppiumPageSource(ElementSourceInterface):
         except AttributeError:
             return False
 
-    def _locate_by_text(self, driver: WebDriver, element: str, element_type: str, index: Optional[int] = None) -> Any:
+    def _locate_by_text(self, driver: WebDriver, element: str, _element_type: str, index: Optional[int] = None) -> Any:
         locator = utils.without_prefix(element, "text=")
         strict = self._strict_element_match()
         if index is not None:
@@ -109,7 +109,7 @@ class AppiumPageSource(ElementSourceInterface):
             internal_logger.exception("Error finding element by text: %s: %s", xpath, e)
             raise RuntimeError("Error finding element by text.") from e
 
-    def _locate_by_xpath(self, driver: WebDriver, element: str, element_type: str) -> Any:
+    def _locate_by_xpath(self, driver: WebDriver, element: str, _element_type: str) -> Any:
         if self.driver is not None and hasattr(self.driver, "ui_helper") and self.driver.ui_helper is not None:
             xpath, _ = self.driver.ui_helper.find_xpath(element, strict=self._strict_element_match())
             if not xpath:

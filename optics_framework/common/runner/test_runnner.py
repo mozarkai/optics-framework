@@ -11,7 +11,7 @@ import shutil
 import sys
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Dict, List, NoReturn, Optional, Union, Any
+from typing import Callable, Dict, List, NoReturn, Optional, Any
 import pytest
 from optics_framework.common.session_manager import Session
 from optics_framework.common.error import ERROR_REGISTRY, OpticsError, Code, explain, undefined_element
@@ -348,7 +348,7 @@ class TestRunner(Runner):
         test_case_name: str,
         module_name: Optional[str] = None,
         keyword_id: Optional[str] = None,
-    ) -> Union[TestCaseResult, ModuleResult, KeywordResult]:
+    ) -> TestCaseResult | ModuleResult | KeywordResult:
         test_result = self.result_printer.test_state.get(test_case_name)
         if not test_result:
             raise ValueError(f"Test case {test_case_name} not found in test_state")
@@ -382,7 +382,7 @@ class TestRunner(Runner):
 
     def _update_status(
         self,
-        result: Union[TestCaseResult, ModuleResult, KeywordResult],
+        result: TestCaseResult | ModuleResult | KeywordResult,
         status: str,
         elapsed: Optional[float] = None,
         test_case_name: str = "",
@@ -1558,7 +1558,7 @@ def runner():
         with open(test_file_path, "w") as f:
             f.write(test_code)
 
-        for module_name in list(sys.modules.keys()):
+        for module_name in list(sys.modules):  # NOSONAR the loop deletes from sys.modules
             if module_name.startswith("test_generated"):
                 del sys.modules[module_name]
 

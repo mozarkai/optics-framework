@@ -51,10 +51,10 @@ class BlankScreen:
     app_id = None
     alerts_outside_source = False
 
-    def add_alert(self, text: str, buttons: Sequence[str]) -> None:
+    def add_alert(self, text: str, buttons: Sequence[str]) -> None:  # NOSONAR a screen with nothing to read ignores the alert
         return None
 
-    def matches(self, detect: PopupDetect) -> Optional[List[str]]:
+    def matches(self, detect: PopupDetect) -> Optional[List[str]]:  # NOSONAR a blank screen matches no rule
         return None
 
     def has_dialog(self) -> bool:
@@ -69,5 +69,5 @@ class BlankScreen:
     def popup_title(self) -> str:
         return ""
 
-    def point_of(self, target: str) -> Optional[Tuple[int, int]]:
+    def point_of(self, target: str) -> Optional[Tuple[int, int]]:  # NOSONAR a blank screen has no point to tap
         return None

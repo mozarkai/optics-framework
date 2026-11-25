@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List, Tuple
 import requests
 import json
 import cv2
@@ -13,7 +13,7 @@ class RemoteOCR(TextInterface):
     DEPENDENCY_TYPE = "text_detection"
     NAME = "remote_ocr"
 
-    def __init__(self, config: Union[Config, Dict[str, Any]]):
+    def __init__(self, config: Config | Dict[str, Any]):
         """Initialize the Remote OCR client with configuration.
 
         Accept either a `Config` Pydantic object or a plain dict-like config for
@@ -34,7 +34,7 @@ class RemoteOCR(TextInterface):
         self.method: str = str(self.capabilities.get("method", "easyocr"))
         self.language: str = str(self.capabilities.get("language", "en"))
 
-    def detect_text(self, input_data: Union[str, "np.ndarray"]) -> Optional[Tuple[str, List[Tuple[List[Tuple[int, int]], str, float]]]]:
+    def detect_text(self, input_data: str | np.ndarray) -> Optional[Tuple[str, List[Tuple[List[Tuple[int, int]], str, float]]]]:
         """
         Detect text in an image via REST API and return text with bounding boxes.
 
@@ -73,7 +73,7 @@ class RemoteOCR(TextInterface):
             raise RuntimeError(
                 "Unexpected error occurred during text detection") from e
 
-    def _encode_image(self, input_data: Union[str, "np.ndarray"]) -> str:
+    def _encode_image(self, input_data: str | np.ndarray) -> str:
         """Helper to encode image input to base64 string."""
         if np is not None and isinstance(input_data, np.ndarray):
             success, enc = cv2.imencode('.png', input_data)

@@ -222,10 +222,15 @@ def as_fail(exc: BaseException, keyword: str = "", tried: Sequence[str] = ()) ->
     code, message = error_parts(exc)
     kind = error_kind(code)
     where = " | ".join(tried) or keyword
+    if code == "X0201":
+        # The element was found and every act on it failed, so the driver's reason is the fact.
+        not_found = f"found {where}, but the action failed: {message.split(': ', 1)[-1]}"
+    elif _says_why(exc):
+        not_found = f"{message.rstrip('.')}."
+    else:
+        not_found = f"not found: tried {where}."
     facts = {
-        # X0201: the element was found and every act on it failed, so the driver's reason is the fact.
-        "not_found": f"found {where}, but the action failed: {message.split(': ', 1)[-1]}" if code == "X0201"
-        else f"{message.rstrip('.')}." if _says_why(exc) else f"not found: tried {where}.",
+        "not_found": not_found,
         "unsupported": f"{keyword} is not supported on this platform.",
         "session_lost": "the driver session ended.",
         "silent_failure": f"{keyword or 'the keyword'} reported an error: {message}.",

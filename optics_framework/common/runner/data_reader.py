@@ -5,7 +5,7 @@ import re
 import inspect
 from abc import ABC, abstractmethod
 from functools import lru_cache
-from typing import Any, Callable, Iterable, Optional, Dict, Set, Union, List, Tuple, cast
+from typing import Any, Callable, Iterable, Optional, Dict, Set, List, Tuple, cast
 from optics_framework.common.config_handler import load_project_yaml
 from optics_framework.common.error import Code, OpticsError, undefined_element
 from optics_framework.common.logging_config import internal_logger
@@ -299,7 +299,7 @@ class DataReader(ABC):
     """Abstract base class for reading data from various file formats."""
 
     @abstractmethod
-    def read_file(self, file_path: str) -> Union[list, dict]:
+    def read_file(self, file_path: str) -> list | dict:
         """
         Read a file and return its contents as a list of dictionaries (CSV) or a dictionary (YAML).
 

@@ -624,12 +624,12 @@ class AISelfHealHandler:
             lines += ["", 'CURRENT SCREEN (ref, class, "visible text", [actions], #id; a row without [...] is read-only text):']
             lines += screen_snapshot.prompt_rows(snap)
         if page_source:
-            lines.append("")
-            lines.append(
+            lines += [
+                "",
                 "CURRENT SCREEN ELEMENTS (condensed UI hierarchy with the page source's own class "
-                "and attribute names, then state flags):"
-            )
-            lines.append(page_source)
+                "and attribute names, then state flags):",
+                page_source,
+            ]
         if ctx.recent_steps:
             lines.append("")
             lines.append("RECENT SUCCESSFUL STEPS (most recent last):")

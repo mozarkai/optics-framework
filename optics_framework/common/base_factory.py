@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Type, Dict, Optional, TypeVar, Generic, Union, List, cast
+from typing import Type, Dict, Optional, TypeVar, Generic, List, cast
 from types import ModuleType
 import importlib
 import pkgutil
@@ -172,7 +172,7 @@ class GenericFactory(Generic[T]):
             raise OpticsError(Code.E0601, message=f"Module '{name}' not found in package '{package}'") from e
 
     @classmethod
-    def _extract_names(cls, name: Union[List[Union[str, dict]], dict]) -> List[str]:
+    def _extract_names(cls, name: List[str | dict] | dict) -> List[str]:
         """Extracts module names from a list or dictionary."""
         if isinstance(name, dict):
             return [k for k, v in name.items() if v]
@@ -231,11 +231,9 @@ class InstanceFallback(BaseModel, Generic[T]):
     @contextmanager
     def routed_to(self, instance: T | None) -> Iterator[None]:
         """Send the calls made inside the block to ``instance`` alone, when it is one of these."""
-        if not any(candidate is instance for candidate in self.instances):
-            yield
-            return
         configured = self.instances
-        self.instances = [instance]
+        if any(candidate is instance for candidate in configured):
+            self.instances = [instance]
         try:
             yield
         finally:

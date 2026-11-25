@@ -524,7 +524,7 @@ class LiveTUI:
             mouse_support=True,
         )
 
-    def _input_prefix(self, lineno, wrap_count):
+    def _input_prefix(self, _lineno, _wrap_count):
         if self._nl_mode:
             return [(_RUNNING, "ai › ")]
         return [("class:cmd", "› ")]
@@ -876,7 +876,7 @@ class LiveTUI:
             return
         self._info(f"Active device is now {serial}")
 
-    def _cmd_elements(self, arg: str) -> None:
+    def _cmd_elements(self, _arg: str) -> None:
         names = self.controller.element_names()
         if not names:
             self.open_popup("Elements", " No named elements found in this project. ")
@@ -893,7 +893,7 @@ class LiveTUI:
         self.open_popup("Elements", "\n".join(lines))
         get_app().invalidate()
 
-    def _cmd_screenshot(self, arg: str) -> None:
+    def _cmd_screenshot(self, _arg: str) -> None:
         if self._busy:
             self._info("Busy — wait for the current action to finish.")
             return
@@ -918,11 +918,11 @@ class LiveTUI:
         app.create_background_task(task())
         app.invalidate()
 
-    def _cmd_help(self, arg: str) -> None:
+    def _cmd_help(self, _arg: str) -> None:
         self.open_popup("Help", _HELP_TEXT)
         get_app().invalidate()
 
-    def _cmd_quit(self, arg: str) -> None:
+    def _cmd_quit(self, _arg: str) -> None:
         self._request_quit()
 
     def _request_quit(self) -> None:

@@ -1,4 +1,4 @@
-from typing import Union, List, Dict, Optional, Type, TypeVar, Any
+from typing import List, Dict, Optional, Type, TypeVar, Any
 from pydantic import BaseModel
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.driver_interface import DriverInterface
@@ -21,11 +21,11 @@ T = TypeVar("T")  # Generic type for the build method
 class OpticsConfig(BaseModel):
     """Configuration for OpticsBuilder."""
 
-    driver_config: Optional[Union[str, List[Union[str, Dict]]]] = None
-    element_source_config: Optional[Union[str, List[Union[str, Dict]]]] = None
-    image_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
-    text_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
-    llm_config: Optional[Union[str, List[Union[str, Dict]], List[Dict[Any, Any]]]] = None
+    driver_config: Optional[str | List[str | Dict]] = None
+    element_source_config: Optional[str | List[str | Dict]] = None
+    image_config: Optional[str | List[str | Dict] | List[Dict[Any, Any]]] = None
+    text_config: Optional[str | List[str | Dict] | List[Dict[Any, Any]]] = None
+    llm_config: Optional[str | List[str | Dict] | List[Dict[Any, Any]]] = None
 
 
 class OpticsBuilder:
@@ -41,7 +41,7 @@ class OpticsBuilder:
         self.session_config = session.config
         self.project_path = session.config.project_path
 
-    def normalise_config(self, config: Union[str, List[Union[str, Dict[Any, Any]]], List[Dict[Any, Any]]]) -> List[Dict[Any, Any]]:
+    def normalise_config(self, config: str | List[str | Dict[Any, Any]] | List[Dict[Any, Any]]) -> List[Dict[Any, Any]]:
         """
         Normalize config to a list of dicts matching the expected factory input.
         - If string: convert to {string: {}}.
@@ -67,18 +67,18 @@ class OpticsBuilder:
             raise OpticsError(Code.E0503, message="Invalid configuration type")
 
     # Fluent methods to set configurations
-    def add_driver(self, config: Union[str, List[Union[str, Dict]]]) -> "OpticsBuilder":
+    def add_driver(self, config: str | List[str | Dict]) -> "OpticsBuilder":
         self.config.driver_config = config
         return self
 
     def add_element_source(
-        self, config: Union[str, List[Union[str, Dict]]]
+        self, config: str | List[str | Dict]
     ) -> "OpticsBuilder":
         self.config.element_source_config = config
         return self
 
     def add_image_detection(
-        self, config: Union[str, List[Union[str, Dict]]], project_path: str, templates = None
+        self, config: str | List[str | Dict], project_path: str, templates = None
     ) -> "OpticsBuilder":
         normalized = self.normalise_config(config)
         # Inject project_path and templates into each config dict
@@ -94,7 +94,7 @@ class OpticsBuilder:
         return self
 
     def add_text_detection(
-        self, config: Union[str, List[Union[str, Dict]]]
+        self, config: str | List[str | Dict]
     ) -> "OpticsBuilder":
         normalized = self.normalise_config(config)
         for item in normalized:
@@ -105,7 +105,7 @@ class OpticsBuilder:
         return self
 
     def add_llm(
-        self, config: Union[str, List[Union[str, Dict]]]
+        self, config: str | List[str | Dict]
     ) -> "OpticsBuilder":
         self.config.llm_config = self.normalise_config(config)
         return self

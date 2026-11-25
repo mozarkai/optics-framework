@@ -77,19 +77,19 @@ class ScreenshotTcpServer:
                         await writer.drain()
                         logger.info(f"screenshot sent to {addr}")
                     except (ConnectionResetError, BrokenPipeError) as e:
-                        logger.error(
+                        logger.exception(
                             f"Client {addr} disconnected during send, error: {e}"
                         )
                         break
                     except Exception as e:
-                        logger.error(
+                        logger.exception(
                             f"Client {addr} disconnected during send, error: {e}"
                         )
                 else:
                     logger.warning(f"Unrecognized command from {addr}: '{command}'")
 
         except Exception as e:
-            logger.error(f"Error handling client {addr}: {e}")
+            logger.exception(f"Error handling client {addr}: {e}")
         finally:
             writer.close()
             await writer.wait_closed()

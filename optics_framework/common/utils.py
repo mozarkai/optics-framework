@@ -7,6 +7,7 @@ import cv2
 import json
 import base64
 import time
+import types
 import numpy as np
 from enum import Enum
 from datetime import timezone, timedelta
@@ -337,7 +338,7 @@ def determine_element_type(element):
     element = element.strip()
     el = element.lower()
 
-    if el.startswith(TEXT_ONLY_PREFIX) or el.startswith("text="):
+    if el.startswith((TEXT_ONLY_PREFIX, "text=")):
         return "Text"
     if el.startswith(ID_PREFIX):
         return "XPath"
@@ -1170,7 +1171,7 @@ def _is_list_type(param_type: Any) -> bool:
 
     # Handle Optional[List[str]] -> Union[List[str], None]
     origin = get_origin(param_type)
-    if origin is Union:
+    if origin is Union or origin is types.UnionType:
         args = get_args(param_type)
         # Check if any of the union types is a list
         for arg in args:
