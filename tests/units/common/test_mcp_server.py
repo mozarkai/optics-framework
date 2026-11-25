@@ -149,7 +149,7 @@ def _row(text, cls, act=("tap",), area="", hint=""):
 
 
 @pytest.fixture
-def desktop(monkeypatch):
+def desktop(monkeypatch, fake_time):
     from optics_framework.common.agent_core import AgentSession, keyword_catalog
 
     monkeypatch.setattr(mcp_server, "_caller", lambda: "client")

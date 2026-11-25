@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import optics_framework.api.action_keyword as action_keyword_module
+import optics_framework.common.agent_core as agent_core_module
 import optics_framework.api.verifier as verifier_module
 import optics_framework.common.strategies as strategies_module
 from optics_framework.common.driver_interface import DriverInterface
@@ -19,8 +20,9 @@ from tests.units.fakes import FakeTime
 def fake_time(monkeypatch):
     """The keywords' waits on a FakeTime, so a wait for a timeout passes at once."""
     clock = FakeTime()
-    for module in (action_keyword_module, strategies_module, verifier_module):
+    for module in (action_keyword_module, agent_core_module, strategies_module, verifier_module):
         monkeypatch.setattr(module, "time", clock)
+    monkeypatch.setattr(agent_core_module, "asyncio", SimpleNamespace(sleep=clock.async_sleep))
     return clock
 
 

@@ -284,3 +284,6 @@ class FakeTime:
     def sleep(self, seconds):
         self.slept.append(seconds)
         self.now += seconds
+
+    async def async_sleep(self, seconds):
+        self.sleep(seconds)
