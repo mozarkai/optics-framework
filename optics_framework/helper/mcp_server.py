@@ -103,13 +103,17 @@ def _camera_source(capabilities: dict[str, Any]) -> dict[str, Any] | None:
     return _sized_camera(capabilities)
 
 
-def _sized_camera(capabilities: dict[str, Any]) -> dict[str, Any]:
+def _sized_camera(capabilities: dict[str, Any], settings: dict[str, Any] | None = None) -> dict[str, Any]:
     # Vision matches are in camera pixels and the driver reads them in its frame, so the two sizes match.
+    settings = dict(settings or {})
+    camera = dict(settings.get("capabilities") or {})
     frame = capabilities.get("frame")
-    size = {}
     if isinstance(frame, dict) and {"width", "height"} <= frame.keys():
-        size = {"out_width": frame["width"], "out_height": frame["height"]}
-    return {"camera_screenshot": {"capabilities": size}}
+        width, height = frame["width"], frame["height"]
+        if camera.get("rotation"):
+            width, height = height, width
+        camera = {"out_width": width, "out_height": height} | camera
+    return {"camera_screenshot": settings | {"capabilities": camera}}
 
 
 try:
@@ -950,22 +954,24 @@ def _decode_screenshot(result: Any) -> bytes:
 
 
 def _screen_sources(
-    driver: str, capabilities: dict[str, Any], elements_sources: list[str] | None,
+    driver: str, capabilities: dict[str, Any], elements_sources: list[str | dict[str, Any]] | None,
 ) -> tuple[list[Any], bool]:
     """The session's element sources, and whether one of them reads the screen only as an image."""
     if elements_sources is None:
         sources = list(_default_sources_for_driver(driver))
         camera = None if sources else _camera_source(capabilities)
         return ([camera] if camera else sources), camera is not None
-    image_only = "usb_screenshot" in elements_sources
-    if "camera_screenshot" not in elements_sources:
-        return list(elements_sources), image_only
-    camera = _sized_camera(capabilities)
-    return [camera if name == "camera_screenshot" else name for name in elements_sources], True
+    sources, image_only = [], False
+    for entry in elements_sources:
+        name, settings = (entry, None) if isinstance(entry, str) else next(iter(entry.items()), ("", None))
+        image_only = image_only or name in ("camera_screenshot", "usb_screenshot")
+        sources.append(_sized_camera(capabilities, settings) if name == "camera_screenshot" else entry)
+    return sources, image_only
 
 
 def _session_config(
-    driver: str, url: str, capabilities: dict[str, Any], elements_sources: list[str] | None, **fields: Any,
+    driver: str, url: str, capabilities: dict[str, Any], elements_sources: list[str | dict[str, Any]] | None,
+    **fields: Any,
 ) -> expose_api.SessionConfig:
     source = {driver: {"enabled": True, "url": url or None, "capabilities": dict(capabilities)}}
     sources, image_only = _screen_sources(driver, capabilities, elements_sources)
@@ -1128,10 +1134,13 @@ def build_server(toolset: str | None = None) -> "FastMCP":
         capabilities: Annotated[dict[str, Any], Field(
             description=(
                 "Driver capabilities. Playwright: profile (from optics://browser-profiles) starts signed in. "
-                "ble: platform, frame {width, height}, serial."
+                "ble: platform, frame {width, height}, serial, host."
             ),
         )] = {},  # noqa: B006
-        elements_sources: Annotated[list[str] | None, Field(description="Omit for the driver's own.")] = None,
+        elements_sources: Annotated[list[str | dict[str, dict[str, Any]]] | None, Field(description=(
+            "Omit for the driver's own. A name, or a config.yaml entry: "
+            '{"camera_screenshot": {"capabilities": {"camera_index": 0, "find_screen": "auto"}}}.'
+        ))] = None,
         text_detection: Annotated[list[str] | None, Field(description="OCR engines; omit for the default.")] = None,
         image_detection: Annotated[list[str] | None, Field(description="Image engines; omit for the default.")] = None,
         project_path: Annotated[str, Field(description="Folder with image templates.")] = "",
