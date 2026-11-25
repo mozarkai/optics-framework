@@ -53,7 +53,8 @@ jobs:
 
       - name: Run Pre-Commit Hooks
         env:
-          SONAR_LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD' }}
+          # The empty tree makes every line new, so a manual run checks whole files.
+          SONAR_LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '4b825dc642cb6eb9a060e54bf8d69288fbee4904' }}
         run: |
           if [ -n "${{ env.CHANGED_FILES }}" ]; then
             echo "Running pre-commit on:"

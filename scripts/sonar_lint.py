@@ -19,15 +19,15 @@ Finding = tuple[int, str, str]
 
 HTTP_VERBS = {"get", "post", "put", "patch", "delete", "head", "options", "api_route"}
 NOQA = re.compile(
-    r"#\s*noqa\s*:\s*[A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*(?P<rest>.*)", re.IGNORECASE
+    r"#\s*noqa\s*:\s*[A-Z]+\d+(?:\s*,\s*[A-Z]+\d+)*(?P<rest>.*)", re.IGNORECASE
 )
 MIN_DUPLICATED_LENGTH = 5
 DUPLICATION_THRESHOLD = 3
 CONSECUTIVE_APPENDS = 3
 MAX_COGNITIVE_COMPLEXITY = 15
+BLOCK_RULES = {"S8495", "S9152", "S5778"}
 RUFF_RULES = {
     "PT018": "S9073",
-    "UP007": "S6546",
     "PIE810": "S8513",
     "TRY400": "S8572",
     "B023": "S1515",
@@ -88,12 +88,12 @@ def duplicated_literals(tree: ast.AST, path: Path) -> Iterator[Finding]:
             seen[node.value].append(node)
     for value, nodes in seen.items():
         if len(nodes) >= DUPLICATION_THRESHOLD:
-            first = min(nodes, key=lambda n: (n.lineno, n.col_offset))
-            yield (
-                first.lineno,
-                "S1192",
-                f"Define a constant instead of duplicating {value[:40]!r} {len(nodes)} times.",
-            )
+            for node in nodes:
+                yield (
+                    node.lineno,
+                    "S1192",
+                    f"Define a constant instead of duplicating {value[:40]!r} {len(nodes)} times.",
+                )
 
 
 def nested_conditionals(tree: ast.AST, _: Path) -> Iterator[Finding]:
@@ -292,6 +292,17 @@ def several_calls_in_raises(tree: ast.AST, path: Path) -> Iterator[Finding]:
                 )
 
 
+def _body_touches(loop: ast.AST, copied: ast.AST) -> bool:
+    root = _root(copied)
+    if not isinstance(loop, (ast.For, ast.AsyncFor)) or not isinstance(root, ast.Name):
+        return False
+    return any(
+        isinstance(n, ast.Name) and n.id == root.id
+        for stmt in loop.body
+        for n in ast.walk(stmt)
+    )
+
+
 def needless_list_in_loop(tree: ast.AST, _: Path) -> Iterator[Finding]:
     for node in ast.walk(tree):
         iters = [node.iter] if isinstance(node, (ast.For, ast.AsyncFor)) else []
@@ -299,6 +310,8 @@ def needless_list_in_loop(tree: ast.AST, _: Path) -> Iterator[Finding]:
         for it in iters:
             if (
                 isinstance(it, ast.Call)
+                and len(it.args) == 1
+                and not _body_touches(node, it.args[0])
                 and _name(it.func) in {"list", "tuple"}
                 and len(it.args) == 1
                 and not it.keywords
@@ -351,7 +364,7 @@ def _unused(
     for arg in params[1:] if skip_first else params:
         if arg.arg not in used and not arg.arg.startswith("_"):
             yield (
-                func.lineno,
+                arg.lineno,
                 "S1172",
                 f'Remove the unused function parameter "{arg.arg}".',
             )
@@ -374,9 +387,12 @@ def unused_parameters(tree: ast.AST, path: Path) -> Iterator[Finding]:
             and node.name not in referenced
         ):
             yield from _unused(node, skip_first=False)
-    for cls in _baseless_classes(tree):
+    baseless = {id(c) for c in _baseless_classes(tree)}
+    for cls in (c for c in ast.walk(tree) if isinstance(c, ast.ClassDef)):
         for func in cls.body:
-            if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                id(cls) in baseless or func.name.startswith("_")
+            ):
                 yield from _unused(func, skip_first=True)
 
 
@@ -471,6 +487,16 @@ def consecutive_appends(tree: ast.AST, _: Path) -> Iterator[Finding]:
                 )
 
 
+def typing_unions(tree: ast.AST, _: Path) -> Iterator[Finding]:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and _name(node.value) == "Union":
+            yield (
+                node.lineno,
+                "S6546",
+                'Use a union type expression ("X | Y") instead of "Union".',
+            )
+
+
 CHECKS: list[Callable[[ast.AST, Path], Iterator[Finding]]] = [
     duplicated_literals,
     nested_conditionals,
@@ -483,6 +509,7 @@ CHECKS: list[Callable[[ast.AST, Path], Iterator[Finding]]] = [
     unused_parameters,
     unguarded_context_managers,
     consecutive_appends,
+    typing_unions,
 ]
 
 
@@ -555,13 +582,14 @@ def complexity_findings(
         subprocess.run(
             [
                 exe,
-                *map(str, files),
                 "--output-format",
                 "json",
                 "--output",
                 str(report),
                 "-q",
                 "-i",
+                "--",
+                *map(str, files),
             ],  # nosec B603
             capture_output=True,
             check=True,
@@ -588,22 +616,44 @@ def _git(*args: str) -> str:
     ).stdout  # nosec B603 B607
 
 
-def changed_lines(base: str) -> dict[Path, set[int]]:
+def _tree_of(base: str) -> str:
+    try:
+        sha = _git(
+            "rev-parse", "--verify", "--end-of-options", f"{base}^{{tree}}"
+        ).strip()
+    except subprocess.CalledProcessError:
+        sha = ""
+    if not re.fullmatch(r"[0-9a-f]{40,64}", sha):
+        sys.exit(f"sonar-lint: {base!r} is not a git ref")
+    return sha
+
+
+def changed_lines(base: str) -> dict[Path, set[int] | None]:
     root = Path(_git("rev-parse", "--show-toplevel").strip())
-    lines: dict[Path, set[int]] = defaultdict(set)
+    lines: dict[Path, set[int] | None] = defaultdict(set)
     current = None
-    for row in _git(
-        "diff", "-U0", "--no-color", "--no-ext-diff", base, "--", "*.py"
-    ).splitlines():
+    diff = _git(
+        "-c",
+        "core.quotePath=false",
+        "diff",
+        "-U0",
+        "--no-color",
+        "--no-ext-diff",
+        _tree_of(base),
+        "--",
+        "*.py",
+    )
+    for row in diff.splitlines():
         if row.startswith("+++ "):
             current = None if row == "+++ /dev/null" else (root / row[6:]).resolve()
         elif row.startswith("@@") and current:
             start, _, count = row.split("+", 1)[1].split(" ", 1)[0].partition(",")
             lines[current].update(range(int(start), int(start) + int(count or 1)))
     for name in _git(
-        "ls-files", "--others", "--exclude-standard", "--", "*.py"
-    ).splitlines():
-        lines[(root / name).resolve()] = set(range(1, 1_000_000))
+        "ls-files", "-z", "--others", "--exclude-standard", "--", "*.py"
+    ).split("\0"):
+        if name:
+            lines[(root / name).resolve()] = None
     return lines
 
 
@@ -622,10 +672,26 @@ def file_findings(
         findings.extend(check(tree, file))
     findings += extra
     if touched is not None:
-        findings = [f for f in findings if f[0] in touched]
+        ends = _block_ends(tree)
+        findings = [f for f in findings if _touches(f, ends, touched)]
         spans = [s for s in spans if touched & set(range(s[0], s[1] + 1))]
     findings += [(start, rule, message) for start, _, rule, message in spans]
     return sorted(f for f in set(findings) if f[0] not in suppressed)
+
+
+def _block_ends(tree: ast.AST) -> dict[int, int]:
+    blocks = (ast.FunctionDef, ast.AsyncFunctionDef, ast.With, ast.AsyncWith)
+    return {
+        n.lineno: n.end_lineno or n.lineno
+        for n in ast.walk(tree)
+        if isinstance(n, blocks)
+    }
+
+
+def _touches(finding: Finding, ends: dict[int, int], touched: set[int]) -> bool:
+    line, rule, _ = finding
+    end = ends.get(line, line) if rule in BLOCK_RULES else line
+    return bool(touched & set(range(line, end + 1)))
 
 
 def _python_files(paths: list[Path]) -> list[Path]:
@@ -655,7 +721,12 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv)
     changed = None if args.all else changed_lines(args.base)
-    files = _python_files(args.paths or list(changed or {}))
+    root = Path(_git("rev-parse", "--show-toplevel").strip()).resolve()
+    files = [
+        f
+        for f in _python_files(args.paths or list(changed or {}))
+        if f.is_relative_to(root)
+    ]
     if not files:
         return 0
     ruff, complexity = ruff_findings(files), complexity_findings(files)
