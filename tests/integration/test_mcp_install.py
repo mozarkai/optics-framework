@@ -38,15 +38,23 @@ json.dump(entries, open(path, "w"))
 OLD = {"user:optics": ["optics", "mcp"], "local:optics": ["optics", "mcp"]}
 
 
-def _fake_claude(tmp_path, entries=None):
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
+@pytest.fixture(scope="session")
+def claude_bin(tmp_path_factory):
+    """One fake claude for the session: macOS checks a new executable on its first run, which costs about 0.4 s."""
+    bin_dir = tmp_path_factory.mktemp("bin")
     claude = bin_dir / "claude"
     claude.write_text(FAKE_CLAUDE.replace("{python}", sys.executable))
     claude.chmod(0o755)
-    if entries is not None:
-        (tmp_path / "claude.json").write_text(json.dumps(entries))
     return f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin"
+
+
+@pytest.fixture
+def fake_claude(tmp_path, claude_bin):
+    def with_entries(entries=None):
+        if entries is not None:
+            (tmp_path / "claude.json").write_text(json.dumps(entries))
+        return claude_bin
+    return with_entries
 
 
 @pytest.fixture
@@ -71,8 +79,8 @@ def _tools(command, cwd):
     return asyncio.run(handshake())
 
 
-def test_install_replaces_the_old_entries_with_an_absolute_command_for_every_folder(tmp_path, install):
-    ran, entries = install(_fake_claude(tmp_path, OLD))
+def test_install_replaces_the_old_entries_with_an_absolute_command_for_every_folder(tmp_path, install, fake_claude):
+    ran, entries = install(fake_claude(OLD))
 
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert list(entries) == ["user:optics"]
@@ -82,19 +90,19 @@ def test_install_replaces_the_old_entries_with_an_absolute_command_for_every_fol
     assert "start_session" in _tools(command, tmp_path)
 
 
-def test_a_failed_install_keeps_the_entries_that_worked(tmp_path, install):
-    ran, entries = install(_fake_claude(tmp_path, OLD), FAKE_CLAUDE_BROKEN="1")
+def test_a_failed_install_keeps_the_entries_that_worked(tmp_path, install, fake_claude):
+    ran, entries = install(fake_claude(OLD), FAKE_CLAUDE_BROKEN="1")
 
     assert ran.returncode != 0
     assert entries == OLD
 
 
-def test_install_names_the_entries_that_outrank_the_user_entry(tmp_path, install):
+def test_install_names_the_entries_that_outrank_the_user_entry(tmp_path, install, fake_claude):
     project = {"mcpServers": {"optics": {"command": "/old/optics", "args": ["mcp"]}}}
     (tmp_path / ".mcp.json").write_text(json.dumps(project))
     (tmp_path / ".claude.json").write_text(json.dumps({"projects": {"/elsewhere": project, "/plain": {"mcpServers": {}}}}))
 
-    ran, _ = install(_fake_claude(tmp_path))
+    ran, _ = install(fake_claude())
 
     assert f"{tmp_path / '.mcp.json'}: remove optics" in ran.stdout
     assert "/elsewhere: run `claude mcp remove --scope local optics` there" in ran.stdout
@@ -102,15 +110,15 @@ def test_install_names_the_entries_that_outrank_the_user_entry(tmp_path, install
     assert json.loads((tmp_path / ".mcp.json").read_text()) == project
 
 
-def test_install_registers_the_toolset_it_was_given(tmp_path, install):
-    ran, entries = install(_fake_claude(tmp_path), "--toolset", "full")
+def test_install_registers_the_toolset_it_was_given(tmp_path, install, fake_claude):
+    ran, entries = install(fake_claude(), "--toolset", "full")
 
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert entries["user:optics"][-2:] == ["--toolset", "full"]
 
 
-def test_install_refuses_the_http_transport(tmp_path, install):
-    ran, entries = install(_fake_claude(tmp_path), "--transport", "http")
+def test_install_refuses_the_http_transport(tmp_path, install, fake_claude):
+    ran, entries = install(fake_claude(), "--transport", "http")
 
     assert ran.returncode != 0
     assert "stdio" in ran.stderr
