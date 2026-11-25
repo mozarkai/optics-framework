@@ -182,7 +182,8 @@ def test_a_rule_can_run_a_module_to_dismiss_the_popup():
     device.on_module = lambda name: setattr(device, "source", PLAIN)
     g, run = guard(device, rule(action={"type": "module", "target": "Dismiss Rate Us"}))
     assert g.on_failure().verdict is Verdict.HANDLED
-    assert device.modules == ["Dismiss Rate Us"] and device.taps == []
+    assert device.modules == ["Dismiss Rate Us"]
+    assert device.taps == []
     assert run.drain()[0]["action"] == "module Dismiss Rate Us"
 
 
@@ -233,7 +234,8 @@ def test_a_popup_the_rules_own_module_is_working_on_is_left_to_that_module_and_t
     device.on_module = module
     assert g.before_step().verdict is Verdict.HANDLED
     assert inner == [Verdict.NONE, Verdict.NONE], "the module's own steps are not stopped by the popup they dismiss"
-    assert device.modules == ["Dismiss Rate Us"] and run.count("Rate Us") == 1
+    assert device.modules == ["Dismiss Rate Us"]
+    assert run.count("Rate Us") == 1
 
 
 @pytest.mark.parametrize("then, ends", [("fail_step", False), ("stop_run", True)])

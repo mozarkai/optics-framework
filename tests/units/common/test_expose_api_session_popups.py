@@ -64,8 +64,9 @@ def test_a_rule_list_that_cannot_be_read_leaves_the_live_rules_alone(monkeypatch
     keep = ["kept"]
     session = SimpleNamespace(config=SimpleNamespace(popup_rules=keep))
     _running(monkeypatch, session)
+    call = expose_api.replace_popup_rules("s1", PopupRulesUpdate(popup_rules=[{"name": "bad"}]))
     with pytest.raises(HTTPException):
-        asyncio.run(expose_api.replace_popup_rules("s1", PopupRulesUpdate(popup_rules=[{"name": "bad"}])))
+        asyncio.run(call)
     assert session.config.popup_rules is keep
 
 
@@ -79,16 +80,18 @@ def test_appium_settings_reach_the_drivers_session(monkeypatch):
 
 def test_a_driver_that_cannot_change_settings_is_refused_and_a_device_refusal_is_reported(monkeypatch):
     _running(monkeypatch, SimpleNamespace(driver=SimpleNamespace(active_instance=SimpleNamespace())))
+    call = expose_api.update_appium_settings("s1", AppiumSettingsUpdate(settings={"a": 1}))
     with pytest.raises(HTTPException) as refused:
-        asyncio.run(expose_api.update_appium_settings("s1", AppiumSettingsUpdate(settings={"a": 1})))
+        asyncio.run(call)
     assert refused.value.status_code == 400
 
     def refuse(settings):
         raise RuntimeError("no such setting")
 
     _running(monkeypatch, SimpleNamespace(driver=SimpleNamespace(active_instance=SimpleNamespace(update_appium_settings=refuse))))
+    call = expose_api.update_appium_settings("s1", AppiumSettingsUpdate(settings={"a": 1}))
     with pytest.raises(HTTPException) as failed:
-        asyncio.run(expose_api.update_appium_settings("s1", AppiumSettingsUpdate(settings={"a": 1})))
+        asyncio.run(call)
     assert failed.value.status_code == 500
     assert "no such setting" in failed.value.detail
 
@@ -128,6 +131,7 @@ def test_the_modules_of_a_running_session_are_replaced_and_its_elements_added_to
 
 def test_an_unknown_session_is_a_404_for_the_modules_route(monkeypatch):
     monkeypatch.setattr(expose_api.session_manager, "get_session", lambda session_id: None)
+    call = expose_api.replace_session_modules("nope", SessionModulesUpdate())
     with pytest.raises(HTTPException) as caught:
-        asyncio.run(expose_api.replace_session_modules("nope", SessionModulesUpdate()))
+        asyncio.run(call)
     assert caught.value.status_code == 404

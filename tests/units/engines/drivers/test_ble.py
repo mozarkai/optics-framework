@@ -182,20 +182,26 @@ class Launcher:
         if self.screen == "home" and abs(y - 2220) < 60:
             self.screen = "web"
 
+    def _takes_text(self):
+        return self.screen == "web" or self.screen == "list" and (self.types or self.focused)
+
+    def _apply(self, command, args):
+        if command == "media" and args == ["home"]:
+            self.screen, self.query, self.focused, self.page = "home", "", False, 0
+        elif (command, args) == ("key", ["meta"]) and self.opens_list:
+            self.screen = "list"
+        elif command == "text" and self._takes_text():
+            self.query = json.loads(args[0])
+        elif command == "tap":
+            self._tap(float(args[0]) * 1080, float(args[1]) * 2340)
+        elif command == "swipe" and self.screen == "list":
+            self.page = min(self.page + 1, len(self.APPS) // 20)
+        elif (command, args) == ("key", ["enter"]) and self.query in self.APPS and self.screen in ("list", "web"):
+            self.screen = self.query if self.screen == "list" else "Web results"
+
     def read(self):
         for command, *args in self.fake.commands[self.seen:]:
-            if command == "media" and args == ["home"]:
-                self.screen, self.query, self.focused, self.page = "home", "", False, 0
-            elif (command, args) == ("key", ["meta"]) and self.opens_list:
-                self.screen = "list"
-            elif command == "text" and (self.screen == "web" or self.screen == "list" and (self.types or self.focused)):
-                self.query = json.loads(args[0])
-            elif command == "tap":
-                self._tap(float(args[0]) * 1080, float(args[1]) * 2340)
-            elif command == "swipe" and self.screen == "list":
-                self.page = min(self.page + 1, len(self.APPS) // 20)
-            elif (command, args) == ("key", ["enter"]) and self.query in self.APPS and self.screen in ("list", "web"):
-                self.screen = self.query if self.screen == "list" else "Web results"
+            self._apply(command, args)
         self.seen = len(self.fake.commands)
         return self._rows()
 

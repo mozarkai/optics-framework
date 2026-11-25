@@ -60,8 +60,10 @@ class TestControllerPageSource:
     def test_returns_stripped_source(self):
         ctrl = _ps_controller((_PS_XML, "ts"))
         out = ctrl.page_source()
-        assert out and "search_edit_text" in out
-        assert "EditText" in out and 'text="gullak"' in out
+        assert out
+        assert "search_edit_text" in out
+        assert "EditText" in out
+        assert 'text="gullak"' in out
 
 
 class FakeAgent:
