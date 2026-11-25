@@ -113,7 +113,7 @@ pylint = ">=3.3.7,<5.0.0"
 [tool.poetry.group.test.dependencies]
 pytest = "^9.2.0"
 pytest-cov = ">=6.0,<7.2"
-pytest-mock = ">=3.14,<3.16"
+pytest-mock = ">=3.14,<3.18"
 pytest-asyncio = ">=1.0,<2.0"
 httpx2 = ">=2.12,<3"
 
