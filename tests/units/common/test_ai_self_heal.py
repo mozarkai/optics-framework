@@ -4,13 +4,14 @@ import pytest
 
 from optics_framework.common import ai_self_heal as ash
 from optics_framework.common import test_context
-from optics_framework.common.error import OpticsError
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.ai_self_heal import (
     AISelfHealHandler,
     HealContext,
     HealKeywordSpec,
     HEAL_ACTION_SCHEMA,
 )
+from optics_framework.common.runner.test_runnner import pop_heal
 from tests.units.fakes import Node, Phone, ScriptedModel, phone_keywords
 
 LOGIN = (50, 90)
@@ -136,15 +137,36 @@ class TestPromptContext:
         assert "CURRENT SCREEN row matches" not in llm.last_system
 
 
+SCROLL_DOWN = {"action": "keyword", "keyword": "scroll", "params": ["down"], "completed": False, "reason": "reveal"}
+PRESS_LOGIN = {"action": "keyword", "keyword": "press_element", "params": ["Login"], "completed": True, "reason": "press it"}
+
+
+def below_the_fold():
+    return Phone([Node("Welcome", (50, 10))], below=[Node("Login", LOGIN)])
+
+
 class TestPressElement:
     def test_a_heal_that_scrolls_to_the_element_and_presses_it(self, tmp_path):
-        phone = Phone([Node("Welcome", (50, 10))], below=[Node("Login", LOGIN)])
-        model = ScriptedModel(
-            {"action": "keyword", "keyword": "scroll", "params": ["down"], "completed": False, "reason": "reveal"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Login"], "completed": True, "reason": "press it"},
-        )
-        phone_keywords(phone, tmp_path, llm=model).action_keyword.press_element("Sign in")
+        phone = below_the_fold()
+        phone_keywords(phone, tmp_path, llm=ScriptedModel(SCROLL_DOWN, PRESS_LOGIN)).action_keyword.press_element("Sign in")
         assert (phone.swipes, phone.taps) == (["down"], [LOGIN])
+
+    def test_a_curation_that_fails_keeps_every_step_of_the_heal(self, tmp_path):
+        model = ScriptedModel(SCROLL_DOWN, PRESS_LOGIN, ConnectionResetError("the curation call dropped"))
+        keywords = phone_keywords(below_the_fold(), tmp_path, llm=model)
+        keywords.action_keyword.press_element("Sign in")
+        assert [step["keyword"] for step in pop_heal(keywords.keyword_map)["suggested_steps"]] == ["scroll", "press_element"]
+
+    def test_an_llm_that_cannot_be_built_leaves_the_step_to_fail_unhealed(self, tmp_path):
+        keywords = phone_keywords(below_the_fold(), tmp_path, llm=ImportError("the gemini extra is not installed"))
+        with pytest.raises(OpticsError) as caught:
+            keywords.action_keyword.press_element("Sign in")
+        assert caught.value.code == Code.E0201
+
+    def test_an_llm_config_error_stops_the_session(self, tmp_path):
+        with pytest.raises(OpticsError) as caught:
+            phone_keywords(Phone([]), tmp_path, llm=OpticsError(Code.E0501, "credentials_path does not exist"))
+        assert caught.value.code == Code.E0501
 
     def test_the_heal_prompt_names_the_suite_element(self, tmp_path):
         model = ScriptedModel()

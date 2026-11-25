@@ -52,6 +52,13 @@ class RecordingEvents:
         return [{k: v for k, v in event.model_dump().items() if k not in UNTIMED} for event in self.events]
 
 
+def given(value):
+    """``value``, or raised when it is an exception."""
+    if isinstance(value, Exception):
+        raise value
+    return value
+
+
 def elements(**values):
     data = ElementData()
     for name, locators in values.items():
@@ -125,7 +132,7 @@ class Phone:
 
     def page_source(self):
         self.source_reads += 1
-        nodes = [*self.app, *(node for layer in self.layers for node in layer.nodes)]
+        nodes = [node for node in [*self.app, *(n for layer in self.layers for n in layer.nodes)] if not node.ocr]
         return "<hierarchy>" + "".join(
             f'<n text="{n.text}" resource-id="{n.resource_id}" package="in.app" '
             f'bounds="[{n.at[0] - 5},{n.at[1] - 5}][{n.at[0] + 5},{n.at[1] + 5}]"/>' for n in nodes
@@ -256,7 +263,8 @@ class PhoneImages(ImageInterface):
 
 
 class ScriptedModel(LLMInterface):
-    """A self-heal model that sends ``replies`` in turn, then gives up, and keeps each prompt it was sent."""
+    """A self-heal model that sends ``replies`` in turn (raising one that is an exception), then gives up, and keeps
+    each prompt it was sent."""
 
     def __init__(self, *replies):
         self.replies, self.prompts = list(replies), []
@@ -264,17 +272,18 @@ class ScriptedModel(LLMInterface):
     def generate(self, prompt, images=None, system=None, response_schema=None, *, temperature=None):
         self.prompts.append(prompt)
         reply = self.replies.pop(0) if self.replies else {"reason": "Nothing on the screen fits.", "action": "give_up"}
-        return json.dumps(reply)
+        return json.dumps(given(reply))
 
 
 class PhoneBuilder:
-    """The builder a session gives the API classes, over ``phone``'s driver and element source."""
+    """The builder a session gives the API classes, over ``phone``'s driver and element source. An ``llm`` that is an
+    exception is what building the LLM raises."""
 
     def __init__(self, phone, config, llm=None, ocr=False):
         driver = PhoneDriver(phone)
         self.session_config, self.event_sdk, self.session = config, None, None
         self._driver, self._source = InstanceFallback([driver]), InstanceFallback([PhoneSource(phone, driver)])
-        self._llm = InstanceFallback([llm]) if llm else None
+        self._llm = InstanceFallback([llm]) if isinstance(llm, LLMInterface) else llm
         self._ocr = InstanceFallback([PhoneOCR(phone)]) if ocr else None
 
     def get_driver(self):
@@ -290,7 +299,7 @@ class PhoneBuilder:
         return None
 
     def get_llm(self):
-        return self._llm
+        return given(self._llm)
 
     def build(self, cls):
         return cls(self)

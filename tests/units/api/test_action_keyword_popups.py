@@ -44,8 +44,8 @@ def model():
 
 @pytest.fixture
 def keywords(tmp_path, model, fake_time):
-    def build(phone, *rules, modules=None, heal=True):
-        return phone_keywords(phone, tmp_path, rules, modules, model if heal else None)
+    def build(phone, *rules, modules=None, heal=True, ocr=False):
+        return phone_keywords(phone, tmp_path, rules, modules, model if heal else None, ocr)
     return build
 
 
@@ -64,6 +64,13 @@ class TestPressElement:
         assert event["screenshots"] == ["popup_run1_1_before.png", "popup_run1_1_after.png"]
         assert all(os.path.exists(tmp_path / name) for name in event["screenshots"])
         assert model.prompts == []
+
+    def test_a_tap_target_only_ocr_reads_is_found_through_the_locate_ladder(self, keywords, run):
+        popup = Layer([Node("Rate Us", (50, 50), "android:id/alertTitle"), Node("Maybe Later", MAYBE_LATER, closes=True, ocr=True)])
+        phone = Phone(app(), popup)
+        keywords(phone, rule(), ocr=True).action_keyword.press_element("Balance card")
+        assert phone.taps == [MAYBE_LATER, CARD]
+        assert seen(run.drain(), "verdict") == [("handled",)]
 
     def test_a_popup_that_takes_the_tap_is_dismissed_but_the_tap_is_not_repeated(self, keywords, run, model):
         phone = Phone(app(), rate_us(hides=False))

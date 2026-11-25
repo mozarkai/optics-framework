@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from optics_framework.common.nl_agent import AgentStep, AgentResult, ExecResult
 from optics_framework.helper.live import LiveController
 from optics_framework.common.error import OpticsError, Code
+from tests.units.fakes import given
 
 
 def _bare_controller():
@@ -29,15 +30,11 @@ class _FakeStrategyManager:
         self.capture_screenshot = MagicMock(name="capture_screenshot")
 
     def capture_pagesource(self):
-        if isinstance(self._result, Exception):
-            raise self._result
-        return self._result
+        return given(self._result)
 
     def get_interactive_elements(self, filter_config=None, compact=False):
         self.compact_arg = compact
-        if isinstance(self._elements_result, Exception):
-            raise self._elements_result
-        return self._elements_result
+        return given(self._elements_result)
 
 
 def _ps_controller(strategy_result):
