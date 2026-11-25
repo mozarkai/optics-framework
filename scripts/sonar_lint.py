@@ -11,7 +11,7 @@ import subprocess  # nosec B404
 import sys
 import tempfile
 import tokenize
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -158,28 +158,31 @@ def _functions(tree: ast.AST) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef
     )
 
 
-def _reachable(start: str, funcs: dict[str, ast.AST]) -> set[str]:
-    reached, pending = set(), [start]
+def _reachable(start: ast.AST, funcs: dict[str, ast.AST]) -> list[ast.AST]:
+    reached, pending = [], [start]
     while pending:
-        name = pending.pop()
-        if name not in reached:
-            reached.add(name)
+        func = pending.pop()
+        if func not in reached:
+            reached.append(func)
             pending += [
-                _name(c.func)
-                for c in _own_nodes(funcs[name])
+                funcs[_name(c.func)]
+                for c in _own_nodes(func)
                 if isinstance(c, ast.Call) and _name(c.func) in funcs
             ]
     return reached
 
 
 def undocumented_http_exceptions(tree: ast.AST, _: Path) -> Iterator[Finding]:
-    funcs = {f.name: f for f in _functions(tree)}
-    for endpoint in funcs.values():
+    defined = list(_functions(tree))
+    names = Counter(f.name for f in defined)
+    # A name defined in several scopes can't be resolved without scope analysis, so it isn't followed.
+    funcs = {f.name: f for f in defined if names[f.name] == 1}
+    for endpoint in defined:
         documented = _endpoint_codes(endpoint)
         if documented is None:
             continue
-        for name in _reachable(endpoint.name, funcs):
-            for line, code in _raised_codes(funcs[name]):
+        for func in _reachable(endpoint, funcs):
+            for line, code in _raised_codes(func):
                 if code not in documented:
                     yield (
                         line,
@@ -197,8 +200,8 @@ def _name(node: ast.AST) -> str:
 
 
 def _root(node: ast.AST) -> ast.AST:
-    while isinstance(node, (ast.Attribute, ast.Subscript)):
-        node = node.value
+    while isinstance(node, (ast.Attribute, ast.Subscript, ast.Call)):
+        node = node.func if isinstance(node, ast.Call) else node.value
     return node
 
 
@@ -427,12 +430,9 @@ def unguarded_context_managers(tree: ast.AST, _: Path) -> Iterator[Finding]:
             _name(d) in {"contextmanager", "asynccontextmanager"}
             for d in func.decorator_list
         ):
-            has_cleanup = any(
-                not isinstance(s, ast.Expr)
-                or not isinstance(s.value, (ast.Yield, ast.YieldFrom))
-                for s in func.body[_yield_index(func) + 1 :]
-            )
-            if has_cleanup and any(_yields_outside_finally(s) for s in func.body):
+            if _cleanup_after_yield(func) and any(
+                _yields_outside_finally(s) for s in func.body
+            ):
                 yield (
                     func.lineno,
                     "S9152",
@@ -440,11 +440,26 @@ def unguarded_context_managers(tree: ast.AST, _: Path) -> Iterator[Finding]:
                 )
 
 
-def _yield_index(func: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    for i, stmt in enumerate(func.body):
-        if any(isinstance(n, (ast.Yield, ast.YieldFrom)) for n in ast.walk(stmt)):
-            return i
-    return len(func.body)
+def _cleanup_after_yield(func: ast.AST) -> bool:
+    for node in ast.walk(func):
+        for field in ("body", "orelse", "finalbody"):
+            stmts = getattr(node, field, None)
+            if not isinstance(stmts, list):
+                continue
+            yields = [i for i, s in enumerate(stmts) if _has_yield(s)]
+            if yields and any(not _is_yield(s) for s in stmts[yields[0] + 1 :]):
+                return True
+    return False
+
+
+def _has_yield(stmt: ast.AST) -> bool:
+    return any(isinstance(n, (ast.Yield, ast.YieldFrom)) for n in ast.walk(stmt))
+
+
+def _is_yield(stmt: ast.AST) -> bool:
+    return isinstance(stmt, ast.Expr) and isinstance(
+        stmt.value, (ast.Yield, ast.YieldFrom)
+    )
 
 
 def _append_target(stmt: ast.stmt) -> str | None:
@@ -597,18 +612,16 @@ def complexity_findings(
         items = json.loads(report.read_text())
     finally:
         shutil.rmtree(report.parent, ignore_errors=True)
+    passed = {name: f for f in files for name in (str(f), os.path.relpath(f))}
     found: dict[Path, list[tuple[int, int, str, str]]] = defaultdict(list)
     for item in items:
-        if item["complexity"] > MAX_COGNITIVE_COMPLEXITY:
+        file = passed.get(item["path"])
+        if file and item["complexity"] > MAX_COGNITIVE_COMPLEXITY:
             message = (
                 f"Refactor {item['function_name']} to reduce its Cognitive Complexity from "
                 f"{item['complexity']} to the {MAX_COGNITIVE_COMPLEXITY} allowed."
             )
-            found[
-                Path(item["path"]).resolve()
-            ].append(  # NOSONAR complexipy's own report
-                (item["line_start"], item["line_end"], "S3776", message)
-            )
+            found[file].append((item["line_start"], item["line_end"], "S3776", message))
     return found
 
 
@@ -644,6 +657,8 @@ def changed_lines(
         "-U0",
         "--no-color",
         "--no-ext-diff",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
         _tree_of(base),
         "--",
         "*.py",
@@ -658,7 +673,14 @@ def changed_lines(
             else:
                 deletions[current].update((start, start + 1))
     for name in _git(
-        "ls-files", "-z", "--others", "--exclude-standard", "--", "*.py"
+        "-C",
+        str(root),
+        "ls-files",
+        "-z",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "*.py",
     ).split("\0"):
         if name:
             lines[(root / name).resolve()] = None
@@ -688,7 +710,7 @@ def file_findings(
     if touched is not None:
         ends = _block_ends(tree)
         findings = [f for f in findings if _touches(f, ends, touched, deleted)]
-        spans = [s for s in spans if touched & set(range(s[0], s[1] + 1))]
+        spans = [s for s in spans if (touched | deleted) & set(range(s[0], s[1] + 1))]
     findings += [(start, rule, message) for start, _, rule, message in spans]
     return sorted(f for f in set(findings) if f[0] not in suppressed)
 
@@ -744,7 +766,9 @@ def main(argv: list[str]) -> int:
         targets = args.paths
     elif changed is None:
         targets = [
-            root / n for n in _git("ls-files", "-z", "--", "*.py").split("\0") if n
+            root / n
+            for n in _git("-C", str(root), "ls-files", "-z", "--", "*.py").split("\0")
+            if n
         ]
     else:
         targets = [*changed, *deletions]
