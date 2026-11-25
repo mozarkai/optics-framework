@@ -12,6 +12,7 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.elementsource_interface import ElementSourceInterface, ScreenPoint
 from optics_framework.common.llm_interface import LLMInterface
 from optics_framework.common.models import ApiData, ElementData, ModuleData
+from optics_framework.common.text_interface import TextInterface
 from optics_framework.engines.drivers.appium_popup import AppiumScreen
 from optics_framework.helper.execute import build_linked_list
 
@@ -56,12 +57,22 @@ def elements(**values):
     return data
 
 
-@dataclass
+@dataclass(eq=False)
 class Node:
+    """One element on the phone. A tap on it ``closes`` its layer or ``opens`` another. Only OCR reads an ``ocr`` node;
+    a ``web`` node is found as a web page's point, which carries its text and state, not as an element handle."""
+
     text: str
     at: tuple[int, int]
     resource_id: str = ""
+    kind: str = "android.widget.TextView"
     closes: bool = False
+    opens: "Layer | None" = None
+    ocr: bool = False
+    web: bool = False
+    value: str = ""
+    enabled: bool = True
+    readable: bool = True
 
 
 @dataclass
@@ -78,14 +89,16 @@ class Phone:
 
     def __init__(self, app, *layers):
         self.app, self.layers = list(app), list(layers)
-        self.lookups, self.taps, self.source_reads = [], [], 0
+        self.lookups, self.taps, self.swipes, self.typed, self.named, self.source_reads = [], [], [], [], [], 0
 
-    def find(self, text):
+    def shown(self):
+        nodes = [node for layer in self.layers for node in layer.nodes]
+        return nodes if any(layer.hides for layer in self.layers) else nodes + self.app
+
+    def find(self, text, index=0):
         self.lookups.append(text)
-        shown = [node for layer in self.layers for node in layer.nodes]
-        if not any(layer.hides for layer in self.layers):
-            shown += self.app
-        return next((node for node in shown if node.text == text), None)
+        matches = [node for node in self.shown() if node.text == text and not node.ocr]
+        return matches[index] if index < len(matches) else None
 
     def tap(self, x, y):
         self.taps.append((x, y))
@@ -96,6 +109,8 @@ class Phone:
                 return
         if self.layers:
             raise RuntimeError("the popup took the tap")
+        opened = next((node.opens for node in self.app if node.at == (x, y) and node.opens), None)
+        self.layers.extend([opened] if opened else [])
 
     def page_source(self):
         self.source_reads += 1
@@ -106,14 +121,47 @@ class Phone:
         ) + "</hierarchy>"
 
 
+def _box(node):
+    return (node.at[0] - 5, node.at[1] - 5), (node.at[0] + 5, node.at[1] + 5)
+
+
 class PhoneDriver(DriverInterface):
-    """An Android driver of ``phone``: taps reach it, and its page source is read as Appium's."""
+    """An Android driver of ``phone`` on a 100 x 100 window: taps, swipes and typing reach it."""
 
     def __init__(self, phone):
         self.phone = phone
 
+    def _name(self, event_name):
+        self.phone.named.extend([event_name] if event_name else [])
+
     def press_coordinates(self, coor_x, coor_y, event_name=None):
+        self._name(event_name)
         self.phone.tap(coor_x, coor_y)
+
+    def press_element(self, element, repeat, event_name=None):
+        self._name(event_name)
+        self.phone.tap(*element.at)
+
+    def enter_text_element(self, element, text, event_name=None):
+        self._name(event_name)
+        self.phone.typed.append((element.at, text))
+
+    def swipe(self, x_coor, y_coor, direction, swipe_length, event_name=None):
+        self.phone.swipes.append((x_coor, y_coor, direction, swipe_length))
+
+    def swipe_percentage(self, x_percentage, y_percentage, direction, swipe_percentage, event_name=None):
+        self.phone.swipes.append((x_percentage, y_percentage, direction, swipe_percentage))
+
+    def get_text_element(self, element):
+        if not element.readable:
+            raise RuntimeError("stale element")
+        return element.value or element.text
+
+    def is_element_enabled(self, element):
+        return element.enabled
+
+    def get_window_size(self):
+        return {"width": 100, "height": 100}
 
     def popup_screen(self, source):
         return AppiumScreen(source)
@@ -135,8 +183,13 @@ class PhoneSource(ElementSourceInterface):
         return np.full((100, 100, 3), 255, dtype=np.uint8)
 
     def locate(self, element, index=None):
-        node = self.phone.find(element)
-        return None if node is None else ScreenPoint(*node.at, text=node.text, enabled=True)
+        node = self.phone.find(element, int(index or 0))
+        if node is not None and node.web:
+            return ScreenPoint(*node.at, text=node.value or node.text, enabled=node.enabled)
+        return node
+
+    def get_bbox_for_element(self, element):
+        return _box(element)
 
     def check_elements(self, elements, visible=False):
         return [self.phone.find(element) is not None for element in elements]
@@ -151,7 +204,21 @@ class PhoneSource(ElementSourceInterface):
         return self.phone.page_source(), "ts"
 
     def get_interactive_elements(self, filter_config=None, compact=False):
-        return []
+        return [{"text": node.text, "xpath": f"//*[@text='{node.text}']", "extra": {"class": node.kind},
+                 "bounds": dict(zip(("x1", "y1", "x2", "y2"), (*_box(node)[0], *_box(node)[1])))}
+                for node in self.phone.shown() if not node.ocr]
+
+
+class PhoneOCR(TextInterface):
+    """An OCR engine that reads the text of every node shown on ``phone``."""
+
+    def __init__(self, phone):
+        self.phone = phone
+
+    def detect_text(self, input_data):
+        lines = [([(left, top), (right, top), (right, bottom), (left, bottom)], node.text, 0.9)
+                 for node in self.phone.shown() for (left, top), (right, bottom) in [_box(node)]]
+        return " ".join(text for _, text, _ in lines), lines
 
 
 class GivingUpModel(LLMInterface):
@@ -168,11 +235,12 @@ class GivingUpModel(LLMInterface):
 class PhoneBuilder:
     """The builder a session gives the API classes, over ``phone``'s driver and element source."""
 
-    def __init__(self, phone, config, llm=None):
+    def __init__(self, phone, config, llm=None, ocr=False):
         driver = PhoneDriver(phone)
         self.session_config, self.event_sdk, self.session = config, None, None
         self._driver, self._source = InstanceFallback([driver]), InstanceFallback([PhoneSource(phone, driver)])
         self._llm = InstanceFallback([llm]) if llm else None
+        self._ocr = InstanceFallback([PhoneOCR(phone)]) if ocr else None
 
     def get_driver(self):
         return self._driver
@@ -181,7 +249,7 @@ class PhoneBuilder:
         return self._source
 
     def get_text_detection(self):
-        return None
+        return self._ocr
 
     def get_image_detection(self):
         return None
@@ -193,9 +261,26 @@ class PhoneBuilder:
         return cls(self)
 
 
-def phone_keywords(phone, output, rules=(), modules=None, llm=None):
+def phone_keywords(phone, output, rules=(), modules=None, llm=None, ocr=False):
     """The keywords of a session on ``phone``, built by build_keywords as every entry point builds them."""
     config = Config(popup_rules=list(rules), execution_output_path=str(output), ai_self_heal=llm is not None)
-    session = SimpleNamespace(optics=PhoneBuilder(phone, config, llm), modules=ModuleData(modules=modules or {}),
+    session = SimpleNamespace(optics=PhoneBuilder(phone, config, llm, ocr), modules=ModuleData(modules=modules or {}),
                               elements=ElementData(), config_handler=ConfigHandler(config))
     return build_keywords(session)
+
+
+class FakeTime:
+    """A clock for the keywords' waits: a sleep moves it on at once, and each read moves it on a millisecond."""
+
+    def __init__(self):
+        self.now, self.slept = 0.0, []
+
+    def monotonic(self):
+        self.now += 0.001
+        return self.now
+
+    time = monotonic
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.now += seconds

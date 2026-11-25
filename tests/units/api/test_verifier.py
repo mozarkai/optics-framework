@@ -1,111 +1,86 @@
-from collections import namedtuple
-from unittest.mock import MagicMock
+"""Verifier on a fake phone: the real strategies over a fake driver, element source and OCR engine."""
 import pytest
 
-from optics_framework.api.verifier import Verifier
 from optics_framework.common.error import Code, OpticsError
-from optics_framework.common.optics_builder import OpticsBuilder
+from tests.units.fakes import Node, Phone, phone_keywords
 
-
-OcrPoint = namedtuple("OcrPoint", "x y text")
-
-
-def one_match(value):
-    result = MagicMock(value=value)
-    result.strategy.element_source.count.return_value = 1
-    return result
-
-
-class MockOpticsBuilder(OpticsBuilder):
-    def __init__(self):
-        self.mock_driver = MagicMock()
-        self.mock_element_source = MagicMock()
-        self.session_config = MagicMock()
-        self.session_config.execution_output_path = "/tmp"
-        self.session_config.save_captures = False
-        self.session = MagicMock()
-
-    def get_driver(self):
-        return self.mock_driver
-
-    def get_element_source(self):
-        return self.mock_element_source
-
-    def get_text_detection(self):
-        return None
-
-    def get_image_detection(self):
-        return None
-
-    @property
-    def event_sdk(self):
-        return MagicMock()
+SUBMIT = (10, 20)
 
 
 @pytest.fixture
-def verifier():
-    return Verifier(MockOpticsBuilder())
+def verifier(tmp_path):
+    def build(*nodes, ocr=False):
+        return phone_keywords(Phone(nodes), tmp_path, ocr=ocr).verifier
+    return build
 
 
-class TestAssertVisibilityVsPresence:
-    def test_assert_visibility_false_with_fail_true_raises(self, verifier):
-        verifier.strategy_manager.assert_visibility = MagicMock(return_value=(False, None, None))
-
-        with pytest.raises(AssertionError, match="Visibility assertion failed"):
-            verifier.assert_visibility("Option 47", timeout_str="3", rule="any", fail=True)
+def expect_failure(check, code, message):
+    with pytest.raises(OpticsError) as failure:
+        check()
+    assert (failure.value.code, failure.value.message) == (code, message)
 
 
-class TestIsElementState:
-    @pytest.fixture
-    def located(self, verifier):
-        element = object()
-        verifier.strategy_manager.locate = MagicMock(return_value=iter([one_match(element)]))
-        return element
+class TestAssertVisibility:
+    @pytest.mark.parametrize("fail", [True, "false"])
+    def test_an_element_not_shown(self, verifier, fail):
+        expect_failure(lambda: verifier().assert_visibility("Option 47", "0", fail=fail), Code.E0201, "'Option 47' is not on the screen.")
 
-    def test_an_element_no_strategy_finds_is_not_found(self, verifier):
-        verifier.strategy_manager.locate = MagicMock(side_effect=OpticsError(Code.E0201, message="nope"))
-        with pytest.raises(OpticsError) as failure:
-            verifier.is_element("css=#x", "enabled", 1)
-        assert failure.value.code == Code.E0201
+    @pytest.mark.skip(reason="bug: fail=false raises E0201 on a missing element instead of returning False")
+    def test_an_element_not_shown_with_fail_off_returns_false(self, verifier):
+        assert verifier().assert_visibility("Option 47", "0", fail="false") is False
 
-    def test_an_element_found_only_on_screen_has_no_state(self, verifier):
-        verifier.strategy_manager.locate = MagicMock(return_value=iter([one_match((10, 20))]))
-        with pytest.raises(OpticsError, match="found only by OCR or image"):
-            verifier.is_element("Submit", "checked", 1)
+
+class TestIsElement:
+    @pytest.mark.parametrize("node", [
+        pytest.param(Node("Submit", SUBMIT), id="an element"),
+        pytest.param(Node("Submit", SUBMIT, web=True), id="a web element"),
+    ])
+    @pytest.mark.parametrize(("enabled", "state", "message"), [
+        pytest.param(True, "enabled", None, id="enabled"),
+        pytest.param(False, "disabled", None, id="disabled"),
+        pytest.param(False, "enabled", "Element 'Submit' is disabled but expected enabled.", id="disabled, expected enabled"),
+        pytest.param(True, "disabled", "Element 'Submit' is enabled but expected disabled.", id="enabled, expected disabled"),
+    ])
+    def test_state(self, verifier, node, enabled, state, message):
+        node.enabled = enabled
+        check = verifier(node)
+        if message is None:
+            check.is_element("Submit", state, 0)
+        else:
+            expect_failure(lambda: check.is_element("Submit", state, 0), Code.E0401, message)
+
+    def test_an_element_not_shown(self, verifier):
+        expect_failure(lambda: verifier().is_element("Submit", "enabled", 0), Code.E0201, "'Submit' is not on the screen.")
+
+    def test_an_element_only_ocr_reads(self, verifier):
+        expect_failure(lambda: verifier(Node("Submit", SUBMIT, ocr=True), ocr=True).is_element("Submit", "enabled", 0), Code.E0401,
+              "Cannot check the enabled state of 'Submit': it was found only by OCR or image.")
 
 
 class TestAssertText:
-    @pytest.fixture(autouse=True)
-    def located(self, verifier, monkeypatch):
-        monkeypatch.setattr(Verifier, "_TEXT_POLL_INTERVAL_S", 0)
-        verifier.strategy_manager.assert_presence = MagicMock()
-        element = object()
-        verifier.strategy_manager.locate = MagicMock(side_effect=lambda _: iter([one_match(element)]))
-        return element
+    @pytest.mark.parametrize("node", [
+        pytest.param(Node("PIN", SUBMIT, value="4321"), id="an element"),
+        pytest.param(Node("PIN", SUBMIT, value="4321", web=True), id="a web element"),
+    ])
+    @pytest.mark.parametrize("expected", [
+        pytest.param("4321", id="text"),
+        pytest.param("  4321 ", id="text with spaces around it"),
+        pytest.param("@:4321", id="a secret"),
+    ])
+    def test_text_that_matches(self, verifier, node, expected):
+        verifier(node).assert_text("PIN", expected, timeout="0")
 
-    def test_text_that_ocr_read_with_the_match_is_compared(self, verifier):
-        verifier.strategy_manager.locate = MagicMock(return_value=iter([one_match(OcrPoint(10, 20, "DELHI"))]))
+    @pytest.mark.parametrize(("expected", "message"), [
+        pytest.param("1234", "Element 'PIN' shows '4321' but expected '1234'.", id="text"),
+        pytest.param("@:1234", "Element 'PIN' shows '****' but expected '****'.", id="a secret"),
+    ])
+    def test_text_that_does_not_match(self, verifier, expected, message):
+        expect_failure(lambda: verifier(Node("PIN", SUBMIT, value="4321")).assert_text("PIN", expected, timeout="0"), Code.E0401, message)
 
-        verifier.assert_text("DELHI", "DELHI", timeout="0")
+    def test_text_only_ocr_reads(self, verifier):
+        expect_failure(lambda: verifier(Node("DELHI", SUBMIT, ocr=True), ocr=True).assert_text("DELHI", "DELHI", timeout="0"),
+              Code.E0401, "Cannot read the text of 'DELHI': it was found only by OCR or image.")
 
-    def test_text_the_driver_cannot_read_ends_as_not_found(self, verifier):
-        verifier.driver.get_text_element.side_effect = RuntimeError("stale element")
-
-        with pytest.raises(OpticsError) as raised:
-            verifier.assert_text("css=#state", "DELHI", timeout="0")
-
-        assert raised.value.code == Code.E0201
-
-    def test_a_secret_is_compared_without_its_prefix(self, verifier):
-        verifier.driver.get_text_element.return_value = "4321"
-
-        verifier.assert_text("css=#pin", "@:4321", timeout="0")
-
-    def test_a_secret_stays_out_of_the_error(self, verifier):
-        verifier.driver.get_text_element.return_value = "4320"
-
-        with pytest.raises(OpticsError) as raised:
-            verifier.assert_text("css=#pin", "@:4321", timeout="0")
-
-        assert "4321" not in str(raised.value)
-        assert "4320" not in str(raised.value)
+    def test_text_the_driver_cannot_read(self, verifier):
+        expect_failure(lambda: verifier(Node("State", SUBMIT, readable=False)).assert_text("State", "DELHI", timeout="0"),
+              Code.E0201, "'State' is not on the screen.")

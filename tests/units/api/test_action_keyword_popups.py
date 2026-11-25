@@ -43,7 +43,7 @@ def model():
 
 
 @pytest.fixture
-def keywords(tmp_path, model):
+def keywords(tmp_path, model, fake_time):
     def build(phone, *rules, modules=None, heal=True):
         return phone_keywords(phone, tmp_path, rules, modules, model if heal else None)
     return build
