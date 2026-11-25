@@ -140,8 +140,8 @@ class AppiumServer:
         return Remote
 
 
-def appium_driver(monkeypatch, server, capabilities, permissions=None):
-    """An Appium driver built from its config entry, whose sessions open on ``server``."""
+def appium_driver(monkeypatch, server, capabilities, **config):
+    """An Appium driver built from its config entry and the project ``config``, whose sessions open on ``server``."""
     monkeypatch.setattr(appium_webdriver, "Remote", server.remote)
-    sdk = EventSDK(ConfigHandler(Config(permissions=permissions or {})))
+    sdk = EventSDK(ConfigHandler(Config(**config)))
     return Appium({"url": "http://appium.test:4723", "capabilities": capabilities}, event_sdk=sdk)
