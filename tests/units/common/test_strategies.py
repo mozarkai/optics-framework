@@ -2,6 +2,7 @@
 import pytest
 from selenium.common.exceptions import InvalidSessionIdException, StaleElementReferenceException, WebDriverException
 
+from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.engines.elementsources.appium_find_element import AppiumFindElement
 from tests.units.fakes import Node, Phone, PhoneDriver, PhoneSource, phone_screen
@@ -18,6 +19,14 @@ class TestLocate:
         screen = phone_screen(Phone([Node("", (50, 60), image="button.png")]), images=True)
         assert [(type(r.strategy).__name__, r.value) for r in screen.locate("button.png")] == [
             ("ImageDetectionStrategy", (50, 60))]
+
+    def test_a_source_whose_code_cannot_be_read_is_still_asked(self):
+        built = {}
+        exec("class NoSourceFile(PhoneSource):\n    def locate(self, element, index=None):\n"
+             "        return PhoneSource.locate(self, element, index)", {"PhoneSource": PhoneSource}, built)
+        phone = Phone([Node("Submit", (50, 50))])
+        screen = phone_screen(phone, sources=[built["NoSourceFile"](phone, PhoneDriver(phone))])
+        assert [r.value.text for r in screen.locate("Submit")] == ["Submit"]
 
 
 class TestAssertVisibility:
@@ -40,6 +49,31 @@ class TestAssertPresence:
             phone_screen(Phone([])).assert_presence(["Submit"], "Text", timeout=0, rule="any")
         assert (caught.value.code, caught.value.summary) == (Code.E0201, "'Submit' is not on the screen.")
         assert "OCR is off" in caught.value.hint
+
+
+class WaitOnly(PhoneSource):
+    """A source that can only wait for elements, so an assertion round asks it through the default one-look check."""
+
+    check_elements = ElementSourceInterface.check_elements
+
+    def assert_elements(self, elements, timeout=30, rule="any"):
+        if not any(self.phone.find(element) for element in elements):
+            raise TimeoutError(elements)
+
+
+def wait_only_screen():
+    phone = Phone([Node("Submit", (50, 50))])
+    return phone_screen(phone, sources=[WaitOnly(phone, PhoneDriver(phone))])
+
+
+class TestWaitOnlySource:
+    def test_one_shown_element_is_enough_for_any(self, fake_time):
+        assert wait_only_screen().assert_presence(["Missing", "Submit"], "Text", timeout=1, rule="any")[0] is True
+
+    def test_a_missing_element_fails_all(self, fake_time):
+        with pytest.raises(OpticsError) as caught:
+            wait_only_screen().assert_presence(["Missing", "Submit"], "Text", timeout=1, rule="all")
+        assert caught.value.code == Code.E0201
 
 
 class TreeLess(PhoneSource):

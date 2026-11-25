@@ -96,13 +96,18 @@ class Layer:
     then: "Layer | None" = None
 
 
+class SessionGone(Exception):
+    """The driver session the phone was reached through has ended."""
+
+
 class Phone:
     """An app's nodes under popup layers. A lookup sees past no layer that ``hides``; any layer takes a tap on the app.
-    A scroll down brings the ``below`` nodes into view."""
+    A scroll down brings the ``below`` nodes into view. Once ``gone``, the session has ended and every lookup fails."""
 
     def __init__(self, app, *layers, below=()):
         self.app, self.layers, self.below = list(app), list(layers), list(below)
         self.lookups, self.taps, self.swipes, self.typed, self.named, self.source_reads = [], [], [], [], [], 0
+        self.gone = False
 
     def scroll(self, direction):
         self.swipes.append(direction)
@@ -115,6 +120,8 @@ class Phone:
 
     def find(self, text, index=0):
         self.lookups.append(text)
+        if self.gone:
+            raise SessionGone("the session was ended by the server")
         matches = [node for node in self.shown() if node.text == text and not node.ocr]
         return matches[index] if index < len(matches) else None
 
@@ -148,6 +155,10 @@ class PhoneDriver(DriverInterface):
 
     def __init__(self, phone):
         self.phone = phone
+
+    @staticmethod
+    def is_dead_session_error(exc):
+        return isinstance(exc, SessionGone)
 
     def _name(self, event_name):
         self.phone.named.extend([event_name] if event_name else [])

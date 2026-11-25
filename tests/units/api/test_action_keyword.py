@@ -15,11 +15,33 @@ def keywords(tmp_path, fake_time):
     return build
 
 
+def press_after_the_session_ends(keywords):
+    phone, action = keywords(Node("Pay", (60, 80)))
+    phone.gone = True
+    with pytest.raises(OpticsError) as caught:
+        action.press_element("Pay")
+    return caught.value
+
+
 class TestPressElement:
     def test_the_event_name_reaches_the_driver(self, keywords):
         phone, action = keywords(Node("Pay", (60, 80)))
         action.press_element("Pay", event_name="paid")
         assert (phone.taps, phone.named) == ([(60, 80)], ["paid"])
+
+    def test_a_point_on_a_web_page_is_pressed(self, keywords):
+        phone, action = keywords(Node("Pay", (60, 80), web=True))
+        action.press_element("Pay")
+        assert phone.taps == [(60, 80)]
+
+    def test_pin_a_session_that_ends_during_the_lookup_is_reported_as_a_missing_element(self, keywords):
+        error = press_after_the_session_ends(keywords)
+        assert (error.code, error.__cause__.code) == (Code.E0201, Code.E0106)
+
+    @pytest.mark.skip(reason="bug: _not_located wraps E0106 from the locate loop in ElementNotFound, so a dead session "
+                             "drives fallback level 1 and is reported as FAIL, not ERROR")
+    def test_a_session_that_ends_during_the_lookup_stops_the_step_as_a_dead_session(self, keywords):
+        assert press_after_the_session_ends(keywords).code == Code.E0106
 
 
 class TestEnterText:
