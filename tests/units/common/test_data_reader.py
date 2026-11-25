@@ -1,11 +1,16 @@
+import json
+
 import pytest
 
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
     merge_dicts,
     parse_module_step,
+    read_popup_rules,
 )
+from tests.units.popup_helpers import rule, rule_dict
 
 
 def _write(tmp_path, name, content):
@@ -101,3 +106,33 @@ class TestYAMLDataReader:
 class TestMergeDicts:
     def test_second_source_wins_on_duplicate(self):
         assert merge_dicts({"a": 1}, {"a": 2}, "modules") == {"a": 2}
+
+
+class TestReadPopupRules:
+    @pytest.mark.parametrize(("content", "rules"), [
+        pytest.param("[]", [], id="an empty list"),
+        pytest.param(json.dumps([rule_dict()]), [rule()], id="one rule"),
+    ])
+    def test_read_popup_rules(self, tmp_path, content, rules):
+        assert read_popup_rules(_write(tmp_path, "popup_rules.json", content)) == rules
+
+    @pytest.mark.parametrize(("content", "problem"), [
+        pytest.param("", "cannot read popup rules (Expecting value: line 1 column 1 (char 0))", id="an empty file"),
+        pytest.param("{not json",
+                     "cannot read popup rules (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))",
+                     id="text that is not JSON"),
+        pytest.param(json.dumps({"name": "x"}), "popup_rules: expected a list of rules", id="one rule not in a list"),
+        pytest.param(json.dumps([{"name": "x"}]), "popup_rules['x'].detect: Field required", id="a rule with no detect"),
+    ])
+    def test_read_popup_rules_refuses(self, tmp_path, content, problem):
+        path = _write(tmp_path, "popup_rules.json", content)
+        with pytest.raises(OpticsError) as caught:
+            read_popup_rules(path)
+        assert (caught.value.code, caught.value.message) == (Code.E0501, f"{path}: {problem}")
+
+    def test_read_popup_rules_from_a_missing_file(self, tmp_path):
+        path = str(tmp_path / "popup_rules.json")
+        with pytest.raises(OpticsError) as caught:
+            read_popup_rules(path)
+        assert (caught.value.code, caught.value.message) == (
+            Code.E0501, f"{path}: cannot read popup rules ([Errno 2] No such file or directory: '{path}')")
