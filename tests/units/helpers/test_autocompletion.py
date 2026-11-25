@@ -1,24 +1,11 @@
 from __future__ import annotations
 
-import contextlib
 import io
-from unittest.mock import patch
+import sys
 
 import pytest
 
 from optics_framework.helper import autocompletion
-
-MODULE = "optics_framework.helper.autocompletion"
-
-
-class FakeStdin:
-    """stdin stand-in with a switchable TTY flag."""
-
-    def __init__(self, tty: bool):
-        self._tty = tty
-
-    def isatty(self) -> bool:
-        return self._tty
 
 
 @pytest.fixture
@@ -27,14 +14,11 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _run(home, *, shell="zsh", tty=True, confirm=True):
-    """Run update_shell_rc in isolation; returns (stdout, confirm_asked)."""
-    out = io.StringIO()
-    with patch(f"{MODULE}.sys.stdin", FakeStdin(tty)), \
-            patch(f"{MODULE}.Confirm.ask", return_value=confirm) as ask:
-        with contextlib.redirect_stdout(out):
-            autocompletion.update_shell_rc(shell=shell)
-    return out.getvalue(), ask.called
+def _run(capsys, shell):
+    """Run update_shell_rc; returns (stdout, whether it asked to edit the shell's rc file)."""
+    autocompletion.update_shell_rc(shell=shell)
+    out = capsys.readouterr().out
+    return out, "Add autocompletion to" in out
 
 
 def _rc_path(home, shell):
@@ -43,20 +27,23 @@ def _rc_path(home, shell):
 
 @pytest.mark.parametrize("shell, rc_name", [("zsh", ".zshrc"), ("bash", ".bashrc")])
 class TestConsentGate:
-    def test_non_tty_never_asks_or_writes(self, home, shell, rc_name):
-        out, asked = _run(home, shell=shell, tty=False)
+    def test_non_tty_never_asks_or_writes(self, home, shell, rc_name, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "stdin", io.StringIO("y\n"))
+        out, asked = _run(capsys, shell)
         assert not _rc_path(home, shell).exists()
         assert not asked
         assert "source" in out
 
 
 class TestDuplicateDetection:
-    def test_already_enabled_skips_the_question(self, home):
+    def test_already_enabled_skips_the_question(self, home, typed, capsys):
         source = (home / ".optics" / "optics_completion.zsh")
         autocompletion.write_completion_scripts()
         rc = home / ".zshrc"
         rc.write_text(f"source {source}\n", encoding="utf-8")
-        out, asked = _run(home, shell="zsh", tty=True, confirm=True)
+        typed("y")
+        out, asked = _run(capsys, "zsh")
         assert not asked
+        assert sys.stdin.read() == "y\n"
         assert "already enabled" in out
         assert rc.read_text(encoding="utf-8").count("source ") == 1
