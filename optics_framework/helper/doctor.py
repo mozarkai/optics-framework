@@ -23,7 +23,7 @@ import subprocess  # nosec B404
 import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 from urllib.parse import urlparse
 
 import yaml
@@ -43,6 +43,9 @@ from optics_framework.helper.environment import detect as detect_environment
 from optics_framework.helper import updates
 from optics_framework.helper.setup import ALL_ENGINES, DISTRIBUTION_NAME, EngineBackend
 
+if TYPE_CHECKING:
+    import airhand
+
 _console = safe_console()
 
 _SOCKET_TIMEOUT_S = 3.0
@@ -60,6 +63,7 @@ _CONFIG_DRIVER = "config: driver"
 _CONFIG_FILE = "config: file"
 _BLE_DONGLE = "ble dongle"
 _BLE_DEVICE = "ble paired device"
+_BLE_HOSTS = "ble hosts"
 _ANY_DRIVER_SOURCES = frozenset({"camera_screenshot"})
 _AIRHAND_DOCS = "https://github.com/chinmayajha/airhand"
 _XA11Y_DRIVER = "xa11y driver"
@@ -534,15 +538,51 @@ def check_ble(caps: Any) -> list[Check]:
         except airhand.AirhandError as exc:
             return [Check(_BLE_DONGLE, "warn", str(exc), "Replug the dongle, then run doctor again.")]
         rows = [Check(_BLE_DONGLE, "ok", dongle.identity)]
+        try:
+            hosts: list[airhand.Host] | None = dongle.hosts()
+        except airhand.Unsupported:
+            hosts = None
+        except airhand.AirhandError as exc:
+            return rows + [Check(_BLE_DEVICE, "warn", str(exc), "Replug the dongle, then run doctor again.")]
+    if hosts:
+        rows.append(Check(_BLE_HOSTS, "ok", ", ".join(_host_label(h) for h in hosts)))
+    host_row = _host_row(caps.get("host"), hosts)
+    if host_row:
+        rows.append(host_row)
+    return rows + [_link_row(status, hosts or [])]
+
+
+def _link_row(status: dict[str, str], hosts: "list[airhand.Host]") -> Check:
     if status.get("conn") != "yes":
-        rows.append(Check(_BLE_DEVICE, "warn", "no device connected",
-                          "Select airhand in the device's Bluetooth settings."))
-    elif int(status.get("sec", "0")) < 2:
-        rows.append(Check(_BLE_DEVICE, "warn", "connected, but the link is not encrypted",
-                          "Forget airhand in the device's Bluetooth settings and pair again."))
-    else:
-        rows.append(Check(_BLE_DEVICE, "ok", "connected and encrypted"))
-    return rows
+        return Check(_BLE_DEVICE, "warn", "no device connected", "Select airhand in the device's Bluetooth settings.")
+    if int(status.get("sec", "0")) < 2:
+        return Check(_BLE_DEVICE, "warn", "connected, but the link is not encrypted",
+                     "Forget airhand in the device's Bluetooth settings and pair again.")
+    linked = next((h.name or h.address for h in hosts if h.connected), None)
+    return Check(_BLE_DEVICE, "ok", f"{linked} connected and encrypted" if linked else "connected and encrypted")
+
+
+def _host_label(host: "airhand.Host") -> str:
+    marks = [mark for mark, on in (("connected", host.connected), ("chosen", host.chosen)) if on]
+    return f"{host.name or '?'} ({host.address})" + (f" [{', '.join(marks)}]" if marks else "")
+
+
+def _host_row(host: Any, hosts: "list[airhand.Host] | None") -> Check | None:
+    """A failure when capabilities.host is one the dongle cannot choose, so the session would stop with E0501."""
+    if host is None:
+        return None
+    if not isinstance(host, str) or not host.strip():
+        return Check(_BLE_HOSTS, "fail", f"capabilities.host must be a device name or address, not {host!r}",
+                     "Set capabilities.host to a paired device's name or address.")
+    if hosts is None:
+        return Check(_BLE_HOSTS, "fail", "the dongle's firmware cannot choose a host",
+                     "Run airhand update, or remove capabilities.host.")
+    airhand = _airhand()
+    try:
+        airhand.find_host(hosts, host)
+    except airhand.Refused as exc:
+        return Check(_BLE_HOSTS, "fail", str(exc), "Pair the device with airhand once, or fix capabilities.host.")
+    return None
 
 
 def _ble_caps(folder: str | None) -> dict | None:
