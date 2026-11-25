@@ -604,14 +604,14 @@ def complexity_findings(
                 f"Refactor {item['function_name']} to reduce its Cognitive Complexity from "
                 f"{item['complexity']} to the {MAX_COGNITIVE_COMPLEXITY} allowed."
             )
-            found[Path(item["path"]).resolve()].append(
+            found[Path(item["path"]).resolve()].append(  # NOSONAR complexipy's own report
                 (item["line_start"], item["line_end"], "S3776", message)
             )
     return found
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(
+    return subprocess.run(  # NOSONAR an argv list with --end-of-options
         ["git", *args], capture_output=True, text=True, check=True
     ).stdout  # nosec B603 B607
 
