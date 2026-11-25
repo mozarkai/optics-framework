@@ -74,8 +74,9 @@ def test_typing_targets_a_camera_read_label_but_not_a_known_label():
     assert [(c.keyword, c.params["text"]) for c in calls] == [("enter_text", "wallpaper")]
 
     label = refs.snapshot([_native("Search", "static_text", [])]).rows[0]
+    action = Action("type", target=label.ref, text="wallpaper")
     with pytest.raises(Fail, match="not a text field"):
-        prepare(Action("type", target=label.ref, text="wallpaper"), refs, {"enter_text": enter_text})
+        prepare(action, refs, {"enter_text": enter_text})
 
 
 def test_a_label_names_the_open_menu_item_before_list_cells_with_the_same_text():

@@ -47,8 +47,9 @@ def test_a_new_rule_replaces_the_one_of_the_same_name_in_place():
 def test_an_unreadable_rules_file_is_an_error_not_no_rules(tmp_path, content):
     path = tmp_path / "popup_rules.json"
     path.write_text(content)
+    file = str(path)
     with pytest.raises(OpticsError) as caught:
-        read_popup_rules(str(path))
+        read_popup_rules(file)
     assert caught.value.code == Code.E0501
     assert str(path) in caught.value.message
 
@@ -65,12 +66,14 @@ def test_add_popup_rules_merges_onto_the_session_config():
 
 
 def test_a_bad_rule_in_the_setup_config_names_the_rule_field_and_value():
+    optics = Optics()
+    config = {
+        "driver_sources": [{"appium": {"enabled": True}}],
+        "elements_sources": [{"appium_find_element": {"enabled": True}}],
+        "popup_rules": [rule_dict(action={"type": "swipe", "target": "x"})],
+    }
     with pytest.raises(OpticsError) as caught:
-        Optics().setup(config={
-            "driver_sources": [{"appium": {"enabled": True}}],
-            "elements_sources": [{"appium_find_element": {"enabled": True}}],
-            "popup_rules": [rule_dict(action={"type": "swipe", "target": "x"})],
-        })
+        optics.setup(config=config)
     assert caught.value.code == Code.E0501
     assert "popup_rules['Rate Us'].action.type" in caught.value.message
     assert "'swipe'" in caught.value.message

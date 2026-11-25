@@ -59,8 +59,9 @@ def test_http_error_translates_to_tool_error(owned):
                     "press_element", {"session_id": "missing", "element": "X"}
                 )
 
+        call = go()
         with pytest.raises(ToolError, match="session not found"):
-            _run(go())
+            _run(call)
 
 
 def test_decode_screenshot_handles_data_url():
@@ -94,7 +95,7 @@ def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
         drainer = threading.Thread(target=drain, daemon=True)
         drainer.start()  # releases whichever writer is blocked on the pipe
         logging_manager.stop_listeners()
-        internal_logger.handlers[:] = original_handlers
+        internal_logger.handlers[:] = original_handlers  # NOSONAR restored before the pipe below closes, not at teardown
         handler.console.file.close()
         drainer.join(timeout=5)
         os.close(read_fd)
@@ -218,12 +219,12 @@ def test_batch_presses_a_key_by_the_name_press_key_takes(desktop):
     assert desktop.ran == ["press_element", "press_keycode"]
 
 
-def test_rows_with_a_screenshot_give_each_box_in_the_image(desktop):
+def test_rows_with_a_screenshot_give_each_box_in_the_image(desktop, monkeypatch):
     import cv2
     import numpy as np
 
     png = cv2.imencode(".png", np.zeros((40, 60, 3), dtype=np.uint8))[1].tobytes()
-    mcp_server._STATES[S1].shot = AsyncMock(return_value=png)
+    monkeypatch.setattr(mcp_server._STATES[S1], "shot", AsyncMock(return_value=png))
 
     seen, = _calls(("observe", {"screenshot": True}))
 
@@ -241,7 +242,7 @@ def _steps_of(sid):
 
 def test_the_steps_of_a_local_session_outlive_a_server_restart(desktop, monkeypatch):
     monkeypatch.setattr(mcp_server, "_caller", lambda: "")
-    mcp_server._STATES[S1].owner = ""
+    monkeypatch.setattr(mcp_server._STATES[S1], "owner", "")
     _calls(("tap", {"target": "Add Event"}))
 
     mcp_server._STATES.clear()
@@ -254,7 +255,7 @@ def test_the_steps_of_a_local_session_outlive_a_server_restart(desktop, monkeypa
 
 def test_a_typed_password_reaches_the_steps_and_the_saved_file_only_as_a_variable(desktop, monkeypatch):
     monkeypatch.setattr(mcp_server, "_caller", lambda: "")
-    mcp_server._STATES[S1].owner = ""
+    monkeypatch.setattr(mcp_server._STATES[S1], "owner", "")
     desktop.rows.append(_row("", "text_field", act=("tap", "input"), hint="Password"))
 
     _calls(("type_text", {"target": "Password", "text": "hunter2-secret"}))
@@ -286,7 +287,7 @@ def test_a_call_without_a_session_id_after_the_end_names_the_ended_session(deskt
 
 def test_a_failed_save_keeps_the_reply_and_leaves_no_temp_file(desktop, monkeypatch):
     monkeypatch.setattr(mcp_server, "_caller", lambda: "")
-    mcp_server._STATES[S1].owner = ""
+    monkeypatch.setattr(mcp_server._STATES[S1], "owner", "")
     monkeypatch.setattr(mcp_server.os, "replace", MagicMock(side_effect=OSError("disk full")))
 
     tapped, = _calls(("tap", {"target": "Add Event"}))

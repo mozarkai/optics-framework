@@ -130,8 +130,9 @@ class TestHttp:
 
     def test_redirect_is_not_followed(self, http_server):
         http_server.mode = "redirect"
+        source = _source(url=http_server.url, token=TOKEN)
         with pytest.raises(CameraScreenshotHttpError) as exc:
-            _source(url=http_server.url, token=TOKEN).capture()
+            source.capture()
         assert exc.value.status == 302
         assert len(http_server.received) == 1
 
@@ -181,8 +182,9 @@ class TestCameraMatchesInDriverWindow:
 class TestEnvFallback:
     def test_env_token_is_never_sent_to_a_url_from_capabilities(self, http_server, monkeypatch):
         monkeypatch.setenv("WEBCAM_SCREENSHOT_TOKEN", TOKEN)
+        source = _source(url=http_server.url)
         with pytest.raises(CameraScreenshotHttpError) as exc:
-            _source(url=http_server.url).capture()
+            source.capture()
         assert exc.value.status == 401
         assert http_server.received == [("/screenshot", None)]
 

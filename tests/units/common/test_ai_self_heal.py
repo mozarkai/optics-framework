@@ -35,7 +35,8 @@ class FakeLLM:
         self.last_prompt = prompt
         self.last_system = system
         assert response_schema is HEAL_ACTION_SCHEMA
-        assert images and isinstance(images[0], (bytes, bytearray))
+        assert images
+        assert isinstance(images[0], (bytes, bytearray))
         return self.scripted.pop(0)
 
 

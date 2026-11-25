@@ -39,7 +39,9 @@ class _FakeResponse:
         self.status_code = status_code
         self.reason = "OK" if status_code == 200 else "Error"
         self.headers = {"Content-Type": content_type}
-        self.text = text if text is not None else (str(json_data) if json_data is not None else "")
+        if text is None:
+            text = str(json_data) if json_data is not None else ""
+        self.text = text
         self.content = self.text.encode()
 
     def json(self):

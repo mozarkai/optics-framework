@@ -141,8 +141,9 @@ def test_a_rule_that_runs_a_module_dismisses_the_popup_with_the_modules_own_step
 def test_a_rule_whose_module_the_session_does_not_have_fails_the_step_with_e0601_not_a_popup_that_stayed():
     phone = Phone()
     ak, _ = keyword(phone, rule(action={"type": "module", "target": "Close Rate Us"}))
+    ak = _with_modules(ak, phone, {})
     with pytest.raises(OpticsError) as caught:
-        _with_modules(ak, phone, {}).press_element("Balance card")
+        ak.press_element("Balance card")
     assert caught.value.code == Code.E0601
     assert "Close Rate Us" in str(caught.value)
     assert phone.pressed == []

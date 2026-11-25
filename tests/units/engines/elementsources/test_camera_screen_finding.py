@@ -187,7 +187,8 @@ def test_the_pointer_finds_a_screen_black_to_its_edges(camera, phone, find_scree
     size = (SCREEN_H, SCREEN_W) if rotation else (SCREEN_W, SCREEN_H)
     capabilities = {"url": camera, "find_screen": find_screen, "out_width": size[0], "out_height": size[1], "rotation": rotation}
     source = CameraScreenshot({"capabilities": capabilities}, driver=phone)
-    assert _shows_the_screen(source.capture(), DARK) and phone.pointer is None
+    assert _shows_the_screen(source.capture(), DARK)
+    assert phone.pointer is None
 
 
 class _Webcam:
@@ -234,28 +235,37 @@ def webcam(monkeypatch, tmp_path):
 
 def test_a_blurred_webcam_focuses_on_the_screen_and_again_on_a_moved_phone(webcam, phone):
     camera, source = webcam(phone.frame, find_screen="frame")
-    assert _shows_the_screen(source.capture()) and camera.value == 35
+    assert _shows_the_screen(source.capture())
+    assert camera.value == 35
     phone.placement, camera.peak = _placement(-4, (430, 290)), 60
-    assert _shows_the_screen(source.capture()) and camera.value == 60
+    assert _shows_the_screen(source.capture())
+    assert camera.value == 60
 
 
 def test_fixed_corners_hold_the_lens_on_a_one_step_peak_that_a_new_session_confirms(webcam, phone):
     screen = np.float32([[0, 0], [SCREEN_W, 0], [SCREEN_W, SCREEN_H], [0, SCREEN_H]])
     corners = [f"{x},{y}" for x, y in cv2.perspectiveTransform(screen[None], phone.placement)[0]]
     camera, source = webcam(phone.frame, deskew_corners=corners)
-    assert _shows_the_screen(source.capture()) and camera.value == 35 and camera.moves > 20
+    assert _shows_the_screen(source.capture())
+    assert camera.value == 35
+    assert camera.moves > 20
     camera, source = webcam(phone.frame, deskew_corners=corners)
-    assert _shows_the_screen(source.capture()) and camera.value == 35 and camera.moves < 10
+    assert _shows_the_screen(source.capture())
+    assert camera.value == 35
+    assert camera.moves < 10
     camera, source = webcam(phone.frame, deskew_corners=corners)
     camera.peak = 120
-    assert _shows_the_screen(source.capture()) and camera.value == 120
+    assert _shows_the_screen(source.capture())
+    assert camera.value == 120
 
 
 def test_another_cameras_lens_is_given_back_its_autofocus_and_left_alone(webcam, phone):
     other = _Webcam(phone.frame)
     camera, source = webcam(phone.frame, lens=other, find_screen="frame")
     camera.value = camera.peak
-    assert _shows_the_screen(source.capture()) and other.value is None
+    assert _shows_the_screen(source.capture())
+    assert other.value is None
     moves = other.moves
     phone.placement = _placement(-4, (430, 290))
-    assert _shows_the_screen(source.capture()) and other.moves == moves
+    assert _shows_the_screen(source.capture())
+    assert other.moves == moves

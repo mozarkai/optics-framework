@@ -92,8 +92,9 @@ def _no_backoff(monkeypatch):
 class TestAppiumScreenshotBytes:
     def test_raises_after_exhausted_retries(self, _no_backoff):
         drv = _FakeWD([WebDriverException("boom"), WebDriverException("boom")])
+        screenshot = AppiumScreenshot(driver=drv)
         with pytest.raises(RuntimeError):
-            AppiumScreenshot(driver=drv).capture_screenshot_bytes()
+            screenshot.capture_screenshot_bytes()
         assert drv.calls == 2
 
 
@@ -238,8 +239,9 @@ def test_a_dead_session_is_not_masked_as_a_miss(monkeypatch, method, error, call
         monkeypatch.setattr(LocatorStrategy, "_is_method_implemented", staticmethod(lambda src, name: True))
     source = MagicMock()
     setattr(source, method, MagicMock(side_effect=error))
+    manager = _sm(source)
     with pytest.raises(OpticsError) as exc_info:
-        call(_sm(source))
+        call(manager)
     assert exc_info.value.code == code
 
 

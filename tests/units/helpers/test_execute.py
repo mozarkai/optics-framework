@@ -82,8 +82,9 @@ class TestInvalidPopupSettingsStopTheRunBeforeAnySession:
         _make_project(tmp_path, _APPIUM_CONFIG + (yaml.safe_dump(config) if config else ""))
         if rules_file is not None:
             (tmp_path / "popup_rules.json").write_text(json.dumps(rules_file))
+        folder = str(tmp_path)
         with pytest.raises(SystemExit) as stopped:
-            entry(str(tmp_path), use_printer=False)
+            entry(folder, use_printer=False)
         shown = capsys.readouterr().err
         assert stopped.value.code == 1
         assert "Cannot start: E0501" in shown
