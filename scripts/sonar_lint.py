@@ -604,7 +604,9 @@ def complexity_findings(
                 f"Refactor {item['function_name']} to reduce its Cognitive Complexity from "
                 f"{item['complexity']} to the {MAX_COGNITIVE_COMPLEXITY} allowed."
             )
-            found[Path(item["path"]).resolve()].append(  # NOSONAR complexipy's own report
+            found[
+                Path(item["path"]).resolve()
+            ].append(  # NOSONAR complexipy's own report
                 (item["line_start"], item["line_end"], "S3776", message)
             )
     return found
@@ -628,9 +630,12 @@ def _tree_of(base: str) -> str:
     return sha
 
 
-def changed_lines(base: str) -> dict[Path, set[int] | None]:
+def changed_lines(
+    base: str,
+) -> tuple[dict[Path, set[int] | None], dict[Path, set[int]]]:
     root = Path(_git("rev-parse", "--show-toplevel").strip())
     lines: dict[Path, set[int] | None] = defaultdict(set)
+    deletions: dict[Path, set[int]] = defaultdict(set)
     current = None
     diff = _git(
         "-c",
@@ -647,14 +652,22 @@ def changed_lines(base: str) -> dict[Path, set[int] | None]:
         if row.startswith("+++ "):
             current = None if row == "+++ /dev/null" else (root / row[6:]).resolve()
         elif row.startswith("@@") and current:
-            start, _, count = row.split("+", 1)[1].split(" ", 1)[0].partition(",")
-            lines[current].update(range(int(start), int(start) + int(count or 1)))
+            start, count = _hunk(row)
+            if count:
+                lines[current].update(range(start, start + count))
+            else:
+                deletions[current].update((start, start + 1))
     for name in _git(
         "ls-files", "-z", "--others", "--exclude-standard", "--", "*.py"
     ).split("\0"):
         if name:
             lines[(root / name).resolve()] = None
-    return lines
+    return lines, deletions
+
+
+def _hunk(row: str) -> tuple[int, int]:
+    start, _, count = row.split("+", 1)[1].split(" ", 1)[0].partition(",")
+    return int(start), int(count or 1)
 
 
 def file_findings(
@@ -662,6 +675,7 @@ def file_findings(
     extra: list[Finding],
     spans: list[tuple[int, int, str, str]],
     touched: set[int] | None,
+    deleted: set[int],
 ) -> list[Finding]:
     try:
         tree = ast.parse(file.read_text(encoding="utf-8"), filename=str(file))
@@ -673,7 +687,7 @@ def file_findings(
     findings += extra
     if touched is not None:
         ends = _block_ends(tree)
-        findings = [f for f in findings if _touches(f, ends, touched)]
+        findings = [f for f in findings if _touches(f, ends, touched, deleted)]
         spans = [s for s in spans if touched & set(range(s[0], s[1] + 1))]
     findings += [(start, rule, message) for start, _, rule, message in spans]
     return sorted(f for f in set(findings) if f[0] not in suppressed)
@@ -688,10 +702,14 @@ def _block_ends(tree: ast.AST) -> dict[int, int]:
     }
 
 
-def _touches(finding: Finding, ends: dict[int, int], touched: set[int]) -> bool:
+def _touches(
+    finding: Finding, ends: dict[int, int], touched: set[int], deleted: set[int]
+) -> bool:
     line, rule, _ = finding
-    end = ends.get(line, line) if rule in BLOCK_RULES else line
-    return bool(touched & set(range(line, end + 1)))
+    if rule not in BLOCK_RULES:
+        return line in touched
+    # A pure deletion leaves no added line, so the lines around it stand in for the block.
+    return bool((touched | deleted) & set(range(line, ends.get(line, line) + 1)))
 
 
 def _python_files(paths: list[Path]) -> list[Path]:
@@ -720,13 +738,17 @@ def main(argv: list[str]) -> int:
         help="report every line, not only the changed ones",
     )
     args = parser.parse_args(argv)
-    changed = None if args.all else changed_lines(args.base)
     root = Path(_git("rev-parse", "--show-toplevel").strip()).resolve()
-    files = [
-        f
-        for f in _python_files(args.paths or list(changed or {}))
-        if f.is_relative_to(root)
-    ]
+    changed, deletions = (None, {}) if args.all else changed_lines(args.base)
+    if args.paths:
+        targets = args.paths
+    elif changed is None:
+        targets = [
+            root / n for n in _git("ls-files", "-z", "--", "*.py").split("\0") if n
+        ]
+    else:
+        targets = [*changed, *deletions]
+    files = [f for f in _python_files(targets) if f.is_relative_to(root)]
     if not files:
         return 0
     ruff, complexity = ruff_findings(files), complexity_findings(files)
@@ -737,7 +759,11 @@ def main(argv: list[str]) -> int:
             file.relative_to(Path.cwd()) if file.is_relative_to(Path.cwd()) else file
         )
         for line, rule, message in file_findings(
-            file, ruff.get(file, []), complexity.get(file, []), touched
+            file,
+            ruff.get(file, []),
+            complexity.get(file, []),
+            touched,
+            deletions.get(file, set()),
         ):
             print(f"{shown}:{line}: {rule} {message}")
             failed = True
