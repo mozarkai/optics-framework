@@ -1501,19 +1501,46 @@ def bboxes_from_webelements(
     return result
 
 
+_STRUCTURED_LOCATORS = ("/", "(", "xpath=", "css=")
+
+
 def split_locators(elements: str) -> list[str]:
-    """The locators in a ``|``-separated list; a ``|`` inside quotes, brackets or parentheses stays in its locator."""
-    parts, start, depth, quote = [], 0, 0, ""
-    for i, char in enumerate(elements):
-        if quote:
-            quote = "" if char == quote else quote
-        elif char in "\"'":
-            quote = char
-        elif char in "[(":
-            depth += 1
-        elif char in "])":
-            depth = max(depth - 1, 0)
-        elif char == "|" and depth == 0:
-            parts.append(elements[start:i])
-            start = i + 1
-    return [*parts, elements[start:]]
+    """The locators in a ``|``-separated list; in an XPath or CSS locator a ``|`` inside quotes, brackets or
+    parentheses stays in its locator, while plain text and image names end at the next ``|``."""
+    parts, start = [], 0
+    while True:
+        end = _locator_end(elements, start)
+        parts.append(elements[start:end])
+        if end == len(elements):
+            return parts
+        start = end + 1
+
+
+def _locator_end(text: str, start: int) -> int:
+    head = text[start:].lstrip()
+    if not head.startswith(_STRUCTURED_LOCATORS):
+        end = text.find("|", start)
+        return len(text) if end < 0 else end
+    escapes, depth, quote, i = head.startswith("css="), 0, "", start
+    while i < len(text):
+        if escapes and text[i] == "\\":
+            i += 2
+            continue
+        if text[i] == "|" and depth == 0 and not quote:
+            return i
+        depth, quote = _nesting(text[i], depth, quote)
+        i += 1
+    return len(text)
+
+
+def _nesting(char: str, depth: int, quote: str) -> tuple[int, str]:
+    """The bracket depth and open quote after ``char``."""
+    if quote:
+        return depth, "" if char == quote else quote
+    if char in "\"'":
+        return depth, char
+    if char in "[(":
+        return depth + 1, quote
+    if char in "])":
+        return max(depth - 1, 0), quote
+    return depth, quote

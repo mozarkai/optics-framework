@@ -240,7 +240,7 @@ class Verifier:
         Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
 
         :param elements: Elements separated by "|" to check (Image templates, OCR templates, or XPaths);
-            a "|" inside quotes, brackets or parentheses belongs to its locator.
+            in an XPath or CSS locator, a "|" inside quotes, brackets or parentheses belongs to it.
         :param timeout_str: The time to wait for the elements in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
@@ -259,7 +259,7 @@ class Verifier:
         the page/DOM but are off-screen (e.g. not yet scrolled into view).
 
         :param elements: Elements separated by "|" to check (Image templates, OCR templates, or XPaths);
-            a "|" inside quotes, brackets or parentheses belongs to its locator.
+            in an XPath or CSS locator, a "|" inside quotes, brackets or parentheses belongs to it.
         :param timeout_str: The time to wait for the elements to become visible, in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
