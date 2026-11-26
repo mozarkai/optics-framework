@@ -306,9 +306,8 @@ class UIHelper:
                             ]
                         )
                         # Replace the exact match in the XPath with the partial match conditions
-                        xpath = xpath.replace(
-                            f'@{attribute}="{attr_value}"', conditions
-                        )
+                        for quote in "\"'":
+                            xpath = xpath.replace(f"@{attribute}={quote}{attr_value}{quote}", conditions)
 
         return xpath
 
@@ -404,40 +403,23 @@ class UIHelper:
         """Extracts the value of a given attribute from the XPath."""
         marker = f"@{attribute}="
         try:
-            start = xpath.index(marker) + len(marker) + 1
-            end = xpath.index('"', start)
-            return xpath[start:end]
-        except ValueError:
+            start = xpath.index(marker) + len(marker)
+            quote = xpath[start]
+            if quote not in "\"'":
+                return None
+            return xpath[start + 1:xpath.index(quote, start + 1)]
+        except (ValueError, IndexError):
             return None
 
     def simplify_xpath(self, element):
-        """
-        Simplify the XPath by focusing on key attributes like resource-id, content-desc, text, or class.
-        """
+        """An XPath for ``element`` from its class, its id and its first description or text."""
         attributes = self.extract_key_attributes(element)
-
-        # Start building the simplified XPath based on available attributes
-        xpath_parts = []
-
-        # Always include the class name (e.g., android.widget.FrameLayout)
-        if attributes["class"]:
-            xpath_parts.append(f"//{attributes['class']}")
-
-        # Add resource-id if available
-        if attributes["resource-id"]:
-            xpath_parts.append(f"[@resource-id={utils.xpath_literal(attributes['resource-id'])}]")
-
-        # Optionally add content-desc or text if available
-        if attributes["content-desc"]:
-            xpath_parts.append(
-                f"[contains(@content-desc, {utils.xpath_literal(attributes['content-desc'])})]"
-            )
-        elif attributes["text"]:
-            xpath_parts.append(f"[contains(@text, {utils.xpath_literal(attributes['text'])})]")
-
-        # Combine all parts into a simplified XPath
-        simplified_xpath = "".join(xpath_parts)
-
+        parts = [f"//{attributes['class']}"]
+        parts += [f"[@{attr}={utils.xpath_literal(attributes[attr])}]" for attr in ("resource-id", "name") if attr in attributes]
+        described = next((attr for attr in ("content-desc", "label", "text", "value") if attr in attributes), None)
+        if described:
+            parts.append(f"[contains(@{described}, {utils.xpath_literal(attributes[described])})]")
+        simplified_xpath = "".join(parts)
         internal_logger.debug(f"Simplified XPath: {simplified_xpath}")
         return simplified_xpath
 
