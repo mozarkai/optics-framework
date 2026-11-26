@@ -10,7 +10,7 @@ from optics_framework.common.strategies import NoLocatorSource, StrategyManager,
 from optics_framework.common.elementsource_interface import ScreenPoint
 from optics_framework.common.instance_fallback import InstanceFallback
 from optics_framework.common import keyword_outcome, test_context, utils
-from optics_framework.common.agent_core import bind, runner_params, visible_params
+from optics_framework.common.agent_core import bind, runner_params, signature_line
 from optics_framework.common.ai_self_heal import (
     VALUE_PLACEHOLDER, AISelfHealHandler, HealContext, HealGuide, HealKeywordSpec, KeywordExecResult,
 )
@@ -468,15 +468,9 @@ class ActionKeyword:
     def _heal_catalog(self) -> List[HealKeywordSpec]:
         """Return the keyword catalog for the self-healer (focused subset with signatures)."""
         return [
-            HealKeywordSpec(name=name, signature=self._heal_keyword_signature(name, method))
+            HealKeywordSpec(name=name, signature=signature_line(name, method))
             for name, method in self._heal_dispatch.items()
         ]
-
-    @staticmethod
-    def _heal_keyword_signature(name: str, method: Callable) -> str:
-        """Build a ghost-text signature like ``press_element <element> [repeat] [offset_x]``."""
-        params = (f"<{p.name}>" if p.default is p.empty else f"[{p.name}]" for p in visible_params(method))
-        return " ".join([name, *params])
 
     def _capture_screenshot_safe(self) -> Any:
         """Capture a screenshot, or None on failure or when neither saved captures nor AI self-heal need it."""

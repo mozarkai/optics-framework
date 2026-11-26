@@ -7,6 +7,7 @@ import inspect
 import io
 import math
 import re
+import shlex
 import time
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -293,6 +294,16 @@ def keyword_params(fn: Callable[..., Any]) -> list[inspect.Parameter]:
 
 def visible_params(fn: Callable[..., Any]) -> list[inspect.Parameter]:
     return [p for p in keyword_params(fn) if p.name not in HIDDEN_PARAMS]
+
+
+def signature_line(name: str, fn: Callable[..., Any]) -> str:
+    """A keyword as a prompt lists it, ``press_element <element> [repeat]``: a required param in <>, an optional one in []."""
+    return " ".join([name, *(f"<{p.name}>" if p.default is p.empty else f"[{p.name}]" for p in visible_params(fn))])
+
+
+def keyword_line(keyword: str, params: Sequence[str]) -> str:
+    """A keyword call as one shell-quoted line: what a prompt shows and what a line executor parses."""
+    return " ".join([keyword, *map(shlex.quote, params)])
 
 
 def element_slot(spec: Sequence[inspect.Parameter]) -> str | None:
