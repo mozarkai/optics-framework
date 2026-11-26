@@ -104,14 +104,19 @@ def test_the_app_argument_names_the_app_of_a_desktop_session():
     assert mcp_server._session_caps("appium", "B", {"platformName": "Mac"})["app"] == "B"
 
 
-def test_an_unknown_driver_says_how_to_start_a_desktop_app():
+@pytest.mark.parametrize(("args", "shown"), [
+    ({"driver": "xa11y", "app": "Notes"}, "platformName"),
+    ({"driver": "appium", "url": "http://127.0.0.1:9", "capabilities": {"platformName": "Android"}},
+     "agent-skills/set-up-android/SKILL.md"),
+], ids=["unknown_driver_names_the_desktop_form", "no_appium_server_links_the_setup_steps"])
+def test_a_session_that_cannot_start_says_what_to_do(args, shown):
     async def go():
         async with Client(mcp_server.build_server("full")) as client:
-            return await client.call_tool("start_session", {"driver": "xa11y", "app": "Notes"}, raise_on_error=False)
+            return await client.call_tool("start_session", args, raise_on_error=False)
 
     reply = _run(go())
     assert reply.is_error
-    assert 'platformName' in reply.content[0].text
+    assert shown in reply.content[0].text
 
 
 S1 = "0b6f9c1e-6a8e-4d3b-9b8e-2f4c1a7d5e90"
@@ -198,6 +203,7 @@ def test_the_steps_of_an_ended_session_stay_readable_by_their_owner(desktop, mon
 
     assert desktop.ended == [S1]
     assert STEPS in _shown(ended)
+    assert "agent-skills/write-a-suite/SKILL.md" in _shown(ended)
     assert [step["keyword"] for step in steps["steps"]] == ["Press Element"]
     assert "Press Element" in steps["modules_csv"]
 
