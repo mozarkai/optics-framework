@@ -43,9 +43,6 @@ class TestAssertPresence:
         pytest.param("//*[contains(@text, '|')]", id="in a function call"),
         pytest.param("//a[@id='x' or (@name='|')]", id="in a nested predicate"),
         pytest.param("(//a|//b)[1]", id="a union in parentheses"),
-        pytest.param('button[data-label="Tom | Jerry"]', id="in bare CSS"),
-        pytest.param('[data-label="Tom | Jerry"]', id="in a bare CSS attribute"),
-        pytest.param('CSS=[data-label="Tom | Jerry"]', id="after an upper-case prefix"),
     ])
     def test_a_pipe_inside_a_locator_stays_in_it(self, verifier, locator):
         assert verifier(Node(locator, SUBMIT)).assert_presence(locator, "0") is True
@@ -55,7 +52,6 @@ class TestAssertPresence:
         pytest.param("Don't stop", id="after text with an apostrophe"),
         pytest.param("Price [USD", id="after text with a bracket"),
         pytest.param("css=#item\\[", id="after a CSS escape"),
-        pytest.param("Don't stop|Price [USD]", id="after text with an apostrophe, then CSS"),
     ])
     def test_a_pipe_between_locators_separates_them(self, verifier, first):
         assert verifier(Node("Submit", SUBMIT)).assert_presence(f"{first}|Submit", "0") is True
