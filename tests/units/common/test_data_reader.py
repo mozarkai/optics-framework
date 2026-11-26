@@ -135,4 +135,4 @@ class TestReadPopupRules:
         with pytest.raises(OpticsError) as caught:
             read_popup_rules(path)
         assert (caught.value.code, caught.value.message) == (
-            Code.E0501, f"{path}: cannot read popup rules ([Errno 2] No such file or directory: '{path}')")
+            Code.E0501, f"{path}: cannot read popup rules ([Errno 2] No such file or directory: {path!r})")
