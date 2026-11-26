@@ -3,6 +3,7 @@ import json
 import os
 from dataclasses import dataclass
 from types import SimpleNamespace
+from xml.sax.saxutils import escape
 
 import cv2
 import numpy as np
@@ -142,9 +143,13 @@ class Phone:
         self.source_reads += 1
         nodes = [node for node in [*self.app, *(n for layer in self.layers for n in layer.nodes)] if not node.ocr]
         return "<hierarchy>" + "".join(
-            f'<n text="{n.text}" resource-id="{n.resource_id}" package="in.app" '
+            f'<n text={_attr(n.text)} resource-id={_attr(n.resource_id)} package="in.app" '
             f'bounds="[{n.at[0] - 5},{n.at[1] - 5}][{n.at[0] + 5},{n.at[1] + 5}]"/>' for n in nodes
         ) + "</hierarchy>"
+
+
+def _attr(value):
+    return f'"{escape(value, {chr(34): "&quot;"})}"'
 
 
 def _box(node):
