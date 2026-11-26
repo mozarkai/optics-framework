@@ -4,7 +4,7 @@ import time
 import re
 import atexit
 import threading
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from contextlib import contextmanager
 from contextvars import ContextVar
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
@@ -374,7 +374,7 @@ def shutdown_logging():
         disable_logger()
         stop_listeners()
         wait_for_threads()
-        flush_handlers()
+        run_shutdown_hooks()
         clear_queues()
         internal_logger.debug("Logging shutdown completed")
     except Exception as e:
@@ -411,21 +411,21 @@ def check_thread_status():
     if is_thread_alive(logging_manager.internal_listener):
         internal_logger.warning("internal_listener thread did not terminate")
 
-def flush_handlers():
-    try:
-        from optics_framework.common.Junit_eventhandler import get_junit_handler_registry
-        registry = get_junit_handler_registry()
-        active_sessions = registry.get_active_sessions()
 
-        for session_id in active_sessions:
-            handler = registry.get_handler(session_id)
-            if handler:
-                handler.close()
-                internal_logger.debug(f"Flushed JUnit handler for session {session_id}")
-    except ImportError as e:
-        internal_logger.debug(f"Could not import JUnit handler registry: {e}")
-    except Exception as e:
-        internal_logger.exception(f"Error flushing JUnit handlers: {e}")
+_shutdown_hooks: list[Callable[[], None]] = []
+
+
+def on_shutdown(hook: Callable[[], None]) -> None:
+    """Run ``hook`` when logging shuts down, after the listeners stop: a report writer flushes its files there."""
+    _shutdown_hooks.append(hook)
+
+
+def run_shutdown_hooks():
+    for hook in _shutdown_hooks:
+        try:
+            hook()
+        except Exception as e:
+            internal_logger.exception(f"Error in a logging shutdown hook: {e}")
 
 
 def clear_queues():
