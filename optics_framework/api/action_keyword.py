@@ -6,9 +6,9 @@ from functools import partial
 from typing import Callable, Optional, Any, Tuple, List, Dict
 from optics_framework.common.logging_config import internal_logger, register_marked_secret
 from optics_framework.common.optics_builder import OpticsBuilder
-from optics_framework.common.strategies import NoLocatorSource, StrategyManager, changing_screen, one_capture_per_source
+from optics_framework.common.strategies import NoLocatorSource, StrategyManager, boxed_frame, changing_screen, one_capture_per_source
 from optics_framework.common.elementsource_interface import ScreenPoint
-from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.instance_fallback import InstanceFallback
 from optics_framework.common import keyword_outcome, test_context, utils
 from optics_framework.common.agent_core import bind, runner_params, visible_params
 from optics_framework.common.ai_self_heal import (
@@ -89,7 +89,7 @@ def _save_annotated_for_result(
     element_source = getattr(result.strategy, "element_source", None)
     if element_source is None or not hasattr(element_source, "get_bbox_for_element"):
         return
-    framed = utils.boxed_frame(screenshot_np, element_source, lambda: [element_source.get_bbox_for_element(result.value)])
+    framed = boxed_frame(screenshot_np, element_source, lambda: [element_source.get_bbox_for_element(result.value)])
     if framed is None:
         return
     utils.save_screenshot(

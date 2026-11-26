@@ -2,7 +2,7 @@ import importlib
 import pkgutil
 from typing import List
 
-from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.instance_fallback import InstanceFallback
 from optics_framework.common.base_factory import GenericFactory
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.elementsource_interface import ElementSourceInterface

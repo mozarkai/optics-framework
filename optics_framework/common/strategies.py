@@ -4,10 +4,10 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 import inspect
 import time
-from typing import Iterator, List, NamedTuple, Tuple, Generator, Set, Optional, Any
+from typing import Callable, Iterator, List, NamedTuple, Tuple, Generator, Set, Optional, Any
 import cv2
 import numpy as np
-from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.instance_fallback import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common import utils
 from optics_framework.common.logging_config import internal_logger, execution_logger
@@ -176,7 +176,7 @@ class LocatorStrategy(ABC):
         if frame is None:
             return None
         read = getattr(self.element_source, "get_element_bboxes", None)
-        boxed = utils.boxed_frame(frame, self.element_source, lambda: read(elements)) if read else None
+        boxed = boxed_frame(frame, self.element_source, lambda: read(elements)) if read else None
         return frame.copy() if boxed is None else boxed
 
 
@@ -1283,3 +1283,23 @@ class StrategyManager:
         raise OpticsError(
             Code.E0202, message="Could not list the elements on the screen", cause=last_error
         )
+
+
+def boxed_frame(
+    frame: np.ndarray,
+    element_source: Any,
+    read_bboxes: Callable[[], List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]],
+) -> Optional[np.ndarray]:
+    """``frame`` with the boxes ``read_bboxes`` gives drawn on it, or None when there is none.
+
+    The boxes are evidence for a verdict already made, so a failure to read them never fails the keyword.
+    """
+    try:
+        bboxes = [b for b in read_bboxes() if b is not None]
+    except Exception as e:
+        raise_if_session_dead(e)
+        internal_logger.debug(f"Reading element bounds for the screenshot failed: {e}")
+        return None
+    if not bboxes:
+        return None
+    return utils.annotate(frame.copy(), utils.scale_bboxes_for_screenshot(bboxes, element_source, frame))
