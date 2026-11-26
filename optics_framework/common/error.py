@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from rich import get_console
 from rich.panel import Panel
 from rich.text import Text
+from optics_framework.common import test_context
 from optics_framework.common.logging_config import internal_logger
 
 
@@ -432,8 +433,6 @@ class OpticsError(Exception):
 
 def element_label(locator: str) -> str:
     """The element's name in the project when a ``${name}`` param named it, else the quoted locator."""
-    from optics_framework.common import test_context
-
     names = test_context.element_names.get({})
     return names.get(locator) or f"'{locator}'"
 
