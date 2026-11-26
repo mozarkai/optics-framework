@@ -73,6 +73,12 @@ def test_a_loose_xpath_is_found_only_when_matching_is_loose(source, xpath, stric
         assert locate(xpath).rect == BUY_101
 
 
+def test_a_loose_xpath_keeps_its_other_conditions(source):
+    decoy = '<android.widget.Button class="android.widget.Button" text="Buy 999" content-desc="" resource-id="other" bounds="[0,300][100,350]"/>'
+    page = PAGE.replace('<hierarchy rotation="0">', f'<hierarchy rotation="0">{decoy}')
+    assert source(page=page).locate("//*[@text='Buy 101' and @resource-id='com.app:id/buy_101']").rect == BUY_101
+
+
 def test_an_ios_xpath_is_found_in_part_by_its_label(source):
     assert source(page=IOS_PAGE, capabilities=IOS).locate('//*[@label="101"]').rect == BUY_101
 
