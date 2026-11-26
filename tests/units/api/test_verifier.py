@@ -36,6 +36,21 @@ class TestAssertVisibility:
         assert getattr(shown, check)(elements, "0") is True
 
 
+class TestAssertPresence:
+    @pytest.mark.parametrize("locator", [
+        pytest.param('//*[@text="Tom | Jerry"]', id="in double quotes"),
+        pytest.param("//*[@text='Tom | Jerry']", id="in single quotes"),
+        pytest.param("//*[contains(@text, '|')]", id="in a function call"),
+        pytest.param("//a[@id='x' or (@name='|')]", id="in a nested predicate"),
+        pytest.param("(//a|//b)[1]", id="a union in parentheses"),
+    ])
+    def test_a_pipe_inside_a_locator_stays_in_it(self, verifier, locator):
+        assert verifier(Node(locator, SUBMIT)).assert_presence(locator, "0") is True
+
+    def test_a_pipe_between_locators_separates_them(self, verifier):
+        assert verifier(Node("Submit", SUBMIT)).assert_presence("Missing|Submit", "0") is True
+
+
 class TestIsElement:
     @pytest.mark.parametrize("node", [
         pytest.param(Node("Submit", SUBMIT), id="an element"),
