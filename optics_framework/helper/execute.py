@@ -41,7 +41,7 @@ from optics_framework.common.models import (
     PopupRule,
     merge_popup_rules,
 )
-from optics_framework.helper.abort import abort_with_panel
+from optics_framework.helper.abort import abort_with_panel, show_start_panel
 from optics_framework.helper.case_selection import select_test_cases
 
 
@@ -1036,7 +1036,8 @@ def run_project(
 
     ``include``/``exclude`` replace the selection in config.yaml when either
     is given. ``output`` picks how progress is shown; without it ``use_printer``
-    picks ``auto`` or ``none``. Split out of ``execute_main`` so an in-process
+    picks ``auto`` or ``none``. A run that cannot start shows why, writes its
+    report and returns False. Split out of ``execute_main`` so an in-process
     caller can read the outcome instead of catching the ``SystemExit`` the CLI
     reports failure with."""
     args = RunnerArgs(
@@ -1046,8 +1047,10 @@ def run_project(
     runner_instance = ExecuteRunner(args)
     problem = _preflight(getattr(runner_instance, "config", None), folder_path)
     if problem is not None:
+        show_start_panel(problem.lines, problem.code)
         runner_instance.report_start_failure(problem)
-        abort_with_panel(problem.lines, problem.code)
+        runner_instance.cleanup()
+        return False
     results = _run_until_stopped(runner_instance.execute())
     return not _has_failed_results(results)
 
