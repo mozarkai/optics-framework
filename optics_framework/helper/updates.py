@@ -16,7 +16,7 @@ from packaging.version import InvalidVersion, Version
 
 from optics_framework.common import safe_fs
 from optics_framework.helper.environment import detect, plan_upgrade
-from optics_framework.helper.onboarding import optics_home
+from optics_framework.common.optics_home import optics_home
 from optics_framework.helper.version import VERSION
 
 PYPI_URL = "https://pypi.org/pypi/optics-framework/json"

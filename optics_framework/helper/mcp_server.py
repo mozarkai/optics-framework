@@ -76,7 +76,7 @@ from optics_framework.engines.elementsources import camera_screenshot
 from optics_framework.engines.vision_models.ocr_models import installed_local_engines
 from optics_framework.helper import feedback, updates
 from optics_framework.helper.abort import MissingExtraError
-from optics_framework.helper.onboarding import optics_home
+from optics_framework.common.optics_home import optics_home
 from optics_framework.helper.version import VERSION
 
 # Unrelated to StrategyFactory's locate-strategy priority in strategies.py —
