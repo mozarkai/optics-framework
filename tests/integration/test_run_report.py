@@ -203,8 +203,9 @@ def test_a_run_that_cannot_start_gives_each_test_case_its_code(tmp_path):
 def test_run_project_on_a_run_that_cannot_start_exits(tmp_path, monkeypatch):
     monkeypatch.delenv("OPTICS_SKIP_PREFLIGHT", raising=False)
     _unreachable_appium(tmp_path)
+    folder = str(tmp_path)
     with pytest.raises(SystemExit) as stop:
-        run_project(str(tmp_path), use_printer=False)
+        run_project(folder, use_printer=False)
     assert stop.value.code == 1
     assert not (tmp_path / "execution_output" / "junit_output.xml").exists()
 

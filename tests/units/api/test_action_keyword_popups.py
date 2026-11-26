@@ -74,8 +74,9 @@ class TestPressElement:
 
     def test_a_popup_that_takes_the_tap_is_dismissed_but_the_tap_is_not_repeated(self, keywords, run, model):
         phone = Phone(app(), rate_us(hides=False))
+        action = keywords(phone, rule()).action_keyword
         with pytest.raises(OpticsError) as caught:
-            keywords(phone, rule()).action_keyword.press_element("Balance card")
+            action.press_element("Balance card")
         assert caught.value.code == Code.X0201
         assert phone.taps == [CARD, MAYBE_LATER]
         assert seen(run.drain(), "verdict") == [("handled",)]
@@ -91,24 +92,26 @@ class TestPressElement:
 
     def test_a_rule_whose_module_the_session_does_not_have(self, keywords, run):
         phone = Phone(app(), rate_us())
+        action = keywords(phone, rule(action={"type": "module", "target": "Close Rate Us"})).action_keyword
         with pytest.raises(OpticsError) as caught:
-            keywords(phone, rule(action={"type": "module", "target": "Close Rate Us"})).action_keyword.press_element(
-                "Balance card")
+            action.press_element("Balance card")
         assert caught.value.code == Code.E0601
         assert "Close Rate Us" in str(caught.value)
         assert phone.taps == []
 
     def test_no_rules(self, keywords, run):
         phone = Phone(app(), rate_us())
+        action = keywords(phone, heal=False).action_keyword
         with pytest.raises(OpticsError) as caught:
-            keywords(phone, heal=False).action_keyword.press_element("Balance card")
+            action.press_element("Balance card")
         assert caught.value.code == Code.E0201
         assert phone.source_reads == 0
 
     def test_a_dialog_no_rule_covers(self, keywords, run, model, tmp_path):
         phone = Phone(app(), rate_us())
+        action = keywords(phone, NOT_COVERED).action_keyword
         with pytest.raises(OpticsError) as caught:
-            keywords(phone, NOT_COVERED).action_keyword.press_element("Balance card")
+            action.press_element("Balance card")
         assert caught.value.code == Code.E0206
         assert phone.taps == []
         assert model.prompts == []
@@ -132,14 +135,16 @@ class TestPressElement:
 
     def test_a_rule_that_stops_the_run(self, keywords, run):
         phone = Phone(app(), rate_us())
+        action = keywords(phone, rule(then="stop_run")).action_keyword
         with pytest.raises(OpticsError) as caught:
-            keywords(phone, rule(then="stop_run")).action_keyword.press_element("Balance card")
+            action.press_element("Balance card")
         assert (caught.value.code, caught.value.details) == (Code.E0408, {"stop_run": True})
         assert run.stop == "Popup 'Rate Us' was dismissed and then ended the run"
 
     def test_a_screen_without_a_popup_or_the_element(self, keywords, run, model):
+        action = keywords(Phone([]), rule()).action_keyword
         with pytest.raises(OpticsError) as caught:
-            keywords(Phone([]), rule()).action_keyword.press_element("Balance card")
+            action.press_element("Balance card")
         assert caught.value.code == Code.E0201
         assert len(model.prompts) == 1
         assert seen(run.drain(), "verdict") == [("none",)]
@@ -186,30 +191,34 @@ class TestAssertions:
     @pytest.mark.parametrize("check", SOFT_CHECKS)
     def test_a_dialog_no_rule_covers(self, keywords, run, check):
         phone = Phone(app(), rate_us())
+        verifier = keywords(phone, NOT_COVERED).verifier
         with pytest.raises(OpticsError) as caught:
-            check(keywords(phone, NOT_COVERED).verifier)
+            check(verifier)
         assert caught.value.code == Code.E0206
         assert phone.taps == []
 
     @pytest.mark.parametrize("check", SOFT_CHECKS)
     def test_a_sensitive_popup(self, keywords, run, check):
         phone = Phone(app(), rate_us())
+        verifier = keywords(phone, rule(sensitive=True)).verifier
         with pytest.raises(OpticsError) as caught:
-            check(keywords(phone, rule(sensitive=True)).verifier)
+            check(verifier)
         assert caught.value.code == Code.E0408
         assert phone.taps == []
         assert run.stop == "Popup 'Rate Us' ended the run; nothing was pressed"
 
     @pytest.mark.parametrize("check", SOFT_CHECKS)
     def test_a_rule_whose_module_the_session_does_not_have(self, keywords, run, check):
+        verifier = keywords(Phone(app(), rate_us()), rule(action={"type": "module", "target": "Close Rate Us"})).verifier
         with pytest.raises(OpticsError) as caught:
-            check(keywords(Phone(app(), rate_us()), rule(action={"type": "module", "target": "Close Rate Us"})).verifier)
+            check(verifier)
         assert caught.value.code == Code.E0601
 
     def test_an_invisible_check_on_an_element_a_popup_hides(self, keywords, run):
         phone = Phone(app(), rate_us())
+        verifier = keywords(phone, rule()).verifier
         with pytest.raises(OpticsError) as caught:
-            keywords(phone, rule()).verifier.is_element("Balance card", "invisible", 0)
+            verifier.is_element("Balance card", "invisible", 0)
         assert caught.value.code == Code.E0401
         assert phone.taps == [MAYBE_LATER]
         assert seen(run.drain(), "verdict") == [("handled",)]
@@ -221,8 +230,9 @@ class TestAssertions:
     @pytest.mark.parametrize(("call", "error"), BAD_ARGUMENTS)
     def test_arguments_it_cannot_run(self, keywords, run, call, error):
         phone = Phone(app(), rate_us())
+        verifier = keywords(phone, rule(check="before_every_step")).verifier
         with pytest.raises(error):
-            call(keywords(phone, rule(check="before_every_step")).verifier)
+            call(verifier)
         assert phone.taps == []
         assert run.drain() == []
 
@@ -233,15 +243,17 @@ class TestAssertions:
 
     def test_a_locator_that_is_not_valid(self, keywords, run):
         phone = Phone(app(), rate_us())
+        verifier = keywords(phone, rule()).verifier
         with pytest.raises(OpticsError) as caught:
-            keywords(phone, rule()).verifier.assert_presence("id:", "0")
+            verifier.assert_presence("id:", "0")
         assert caught.value.code == Code.E0205
         assert phone.taps == []
         assert run.drain() == []
 
     def test_no_rules(self, keywords, run):
         phone = Phone(app(), rate_us())
+        verifier = keywords(phone).verifier
         with pytest.raises(OpticsError) as caught:
-            keywords(phone).verifier.assert_presence("Balance card", "0")
+            verifier.assert_presence("Balance card", "0")
         assert caught.value.code == Code.E0201
         assert phone.source_reads == 0

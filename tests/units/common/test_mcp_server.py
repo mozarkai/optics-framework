@@ -58,8 +58,9 @@ def test_http_error_translates_to_tool_error(owned):
         async with Client(server) as client:
             await client.call_tool("press_element", {"session_id": "missing", "element": "X"})
 
+    call = go()
     with pytest.raises(ToolError, match="Session not found"):
-        _run(go())
+        _run(call)
 
 
 def test_decode_screenshot_handles_data_url():
@@ -223,7 +224,7 @@ def test_rows_with_a_screenshot_give_each_box_in_the_image(desktop, monkeypatch)
     png = cv2.imencode(".png", np.zeros((40, 60, 3), dtype=np.uint8))[1].tobytes()
     async def shot():
         return png
-    mcp_server._STATES[S1].shot = shot
+    monkeypatch.setattr(mcp_server._STATES[S1], "shot", shot)
 
     seen, = _calls(("observe", {"screenshot": True}))
 
@@ -286,7 +287,7 @@ def test_a_call_without_a_session_id_after_the_end_names_the_ended_session(deskt
 
 def test_a_failed_save_keeps_the_reply_and_leaves_no_temp_file(desktop, monkeypatch):
     monkeypatch.setattr(mcp_server, "_caller", lambda: "")
-    mcp_server._STATES[S1].owner = ""
+    monkeypatch.setattr(mcp_server._STATES[S1], "owner", "")
     def disk_full(*_paths):
         raise OSError("disk full")
     monkeypatch.setattr(mcp_server.os, "replace", disk_full)

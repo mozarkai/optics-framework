@@ -54,8 +54,9 @@ def test_date_evaluate_adds_day(optics):
 
 
 def test_setup_with_a_popup_rule_that_cannot_work():
+    optics, config = Optics(), {**APPIUM_ONLY, "popup_rules": [rule_dict(action={"type": "swipe", "target": "x"})]}
     with pytest.raises(OpticsError) as caught:
-        Optics().setup(config={**APPIUM_ONLY, "popup_rules": [rule_dict(action={"type": "swipe", "target": "x"})]})
+        optics.setup(config=config)
     assert (caught.value.code, caught.value.message) == (
         Code.E0501, "popup_rules['Rate Us'].action.type: Input should be 'tap', 'back', 'alert', 'module' or 'none' (got 'swipe')")
 
@@ -68,12 +69,14 @@ class TestAddPopupRules:
             rule("A", max_per_step=1), rule("B", max_per_step=5)]
 
     def test_add_popup_rules_that_cannot_work(self, optics):
+        rules = [rule_dict(action={"type": "tap"})]
         with pytest.raises(OpticsError) as caught:
-            optics.add_popup_rules([rule_dict(action={"type": "tap"})])
+            optics.add_popup_rules(rules)
         assert (caught.value.code, caught.value.message) == (
             Code.E0501, "add_popup_rules: popup_rules['Rate Us'].action: action 'tap' needs a target")
 
     def test_add_popup_rules_before_setup(self):
+        optics, rules = Optics(), [rule_dict()]
         with pytest.raises(OpticsError) as caught:
-            Optics().add_popup_rules([rule_dict()])
+            optics.add_popup_rules(rules)
         assert (caught.value.code, caught.value.message) == (Code.E0101, "Setup not complete. Call setup() first.")

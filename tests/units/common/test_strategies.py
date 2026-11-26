@@ -37,16 +37,18 @@ class TestAssertVisibility:
 
     def test_a_text_only_element_is_not_looked_up_in_the_element_tree(self, fake_time):
         phone = Phone([Node("Submit", (50, 50))])
+        screen = phone_screen(phone)
         with pytest.raises(OpticsError) as caught:
-            phone_screen(phone).assert_visibility(["TEXT_ONLY:Submit"], "Text", timeout=1, rule="any")
+            screen.assert_visibility(["TEXT_ONLY:Submit"], "Text", timeout=1, rule="any")
         assert caught.value.code == Code.E0201
         assert phone.lookups == []
 
 
 class TestAssertPresence:
     def test_a_miss_without_ocr_says_ocr_is_off(self):
+        screen = phone_screen(Phone([]))
         with pytest.raises(OpticsError) as caught:
-            phone_screen(Phone([])).assert_presence(["Submit"], "Text", timeout=0, rule="any")
+            screen.assert_presence(["Submit"], "Text", timeout=0, rule="any")
         assert (caught.value.code, caught.value.summary) == (Code.E0201, "'Submit' is not on the screen.")
         assert "OCR is off" in caught.value.hint
 
@@ -71,8 +73,9 @@ class TestWaitOnlySource:
         assert wait_only_screen().assert_presence(["Missing", "Submit"], "Text", timeout=1, rule="any")[0] is True
 
     def test_a_missing_element_fails_all(self, fake_time):
+        screen = wait_only_screen()
         with pytest.raises(OpticsError) as caught:
-            wait_only_screen().assert_presence(["Missing", "Submit"], "Text", timeout=1, rule="all")
+            screen.assert_presence(["Missing", "Submit"], "Text", timeout=1, rule="all")
         assert caught.value.code == Code.E0201
 
 
@@ -86,8 +89,9 @@ class TreeLess(PhoneSource):
 class TestGetInteractiveElements:
     def test_a_source_that_cannot_list_them_is_not_asked(self):
         phone = Phone([Node("Submit", (50, 50))])
+        screen = phone_screen(phone, sources=[TreeLess(phone, PhoneDriver(phone))])
         with pytest.raises(OpticsError) as caught:
-            phone_screen(phone, sources=[TreeLess(phone, PhoneDriver(phone))]).get_interactive_elements()
+            screen.get_interactive_elements()
         assert str(caught.value) == "E0202: Could not list the elements on the screen"
 
     def test_ocr_lists_them_when_no_source_can(self):
@@ -156,6 +160,7 @@ def _locate(manager):
 def test_a_source_that_fails(fake_time, method, error, call, code):
     source = source_of(Phone([]))
     setattr(source, method, _raises(error))
+    screen = phone_screen(None, sources=[source])
     with pytest.raises(OpticsError) as caught:
-        call(phone_screen(None, sources=[source]))
+        call(screen)
     assert caught.value.code == code

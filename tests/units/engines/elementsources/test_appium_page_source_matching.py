@@ -33,11 +33,12 @@ def source(monkeypatch):
 
 @pytest.mark.parametrize("strict", [False, True])
 def test_a_near_miss_is_found_only_when_matching_is_loose(source, strict):
+    locate = source(strict=strict).locate
     if strict:
         with pytest.raises(RuntimeError):
-            source(strict=True).locate("Buy 102 devices")
+            locate("Buy 102 devices")
     else:
-        assert source().locate("Buy 102 devices").rect == BUY_101
+        assert locate("Buy 102 devices").rect == BUY_101
 
 
 @pytest.mark.parametrize("strict", [False, True])
@@ -51,8 +52,9 @@ def test_a_near_miss_passes_a_presence_check_only_when_matching_is_loose(source,
 
 
 def test_pin_an_xpath_is_never_matched_in_part(source):
+    locate = source().locate
     with pytest.raises(OpticsError):
-        source().locate('//*[@text="Buy 101"]')
+        locate('//*[@text="Buy 101"]')
 
 
 @pytest.mark.skip(reason="bug: simplify_xpath reads attributes that extract_key_attributes dropped for being empty, "

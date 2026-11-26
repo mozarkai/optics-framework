@@ -42,13 +42,15 @@ def test_one_failed_reply_is_retried(clock, first):
 
 
 def test_two_failed_replies_raise(clock):
+    source = AppiumScreenshot(Hub(WebDriverException("boom"), WebDriverException("boom")))
     with pytest.raises(RuntimeError):
-        AppiumScreenshot(Hub(WebDriverException("boom"), WebDriverException("boom"))).capture_screenshot_bytes()
+        source.capture_screenshot_bytes()
     assert clock.slept == [0.5]
 
 
 def test_a_tv_that_cannot_take_a_screenshot():
     tv = SimpleNamespace(can_native_screenshot=lambda: False, driver=Hub())
+    source = AppiumScreenshot(tv)
     with pytest.raises(OpticsError) as caught:
-        AppiumScreenshot(tv).capture_screenshot_bytes()
+        source.capture_screenshot_bytes()
     assert caught.value.code == Code.E0303

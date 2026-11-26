@@ -46,8 +46,9 @@ def source(monkeypatch):
 
 def test_rule_all_needs_every_element_on_the_same_poll(source):
     page = ChangingPage({"a"}, {"b"})
+    find = source(page)
     with pytest.raises(TimeoutError):
-        source(page).assert_elements(["css=#a", "css=#b"], timeout=1, rule="all")
+        find.assert_elements(["css=#a", "css=#b"], timeout=1, rule="all")
     assert page.slept == [0.3] * 4
 
 

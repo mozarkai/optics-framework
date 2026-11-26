@@ -11,8 +11,9 @@ from optics_framework.common.session_manager import SessionManager
 def start_without_a_driver(tmp_path, monkeypatch):
     """Start a session whose driver does not exist; returns the session folders left in the temp folder."""
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    manager, config = SessionManager(), Config(driver_sources=[{"nodriver": {"enabled": True}}])
     with pytest.raises(OpticsError) as caught:
-        SessionManager().create_session(Config(driver_sources=[{"nodriver": {"enabled": True}}]), None, None, None, None)
+        manager.create_session(config, None, None, None, None)
     assert caught.value.code == Code.E0601
     return list(tmp_path.glob("optics_session_*"))
 

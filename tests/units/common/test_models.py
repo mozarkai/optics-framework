@@ -51,8 +51,9 @@ class TestParsePopupRules:
         assert (caught.value.code, caught.value.message) == (Code.E0501, message)
 
     def test_parse_popup_rules_names_where_the_rules_came_from(self):
+        rules = [rule_dict(), rule_dict()]
         with pytest.raises(OpticsError) as caught:
-            parse_popup_rules([rule_dict(), rule_dict()], "add_popup_rules")
+            parse_popup_rules(rules, "add_popup_rules")
         assert caught.value.message == "add_popup_rules: rule names must be unique"
 
 

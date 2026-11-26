@@ -163,7 +163,7 @@ class TestRunAll:
 
     async def test_a_popup_that_stops_the_run(self):
         def log_in_elsewhere():
-            test_context.popup_run.get().stop = "Another device is trying to log in"
+            test_context.popup_run.get().stop = "Another device is trying to log in"  # NOSONAR as the popup guard sets it
             raise OpticsError(Code.E0408, message="Popup 'Login elsewhere' ended the run")
 
         runner, events = setup({"A": ["Stop"], "B": ["Ok"], "Teardown": ["Ok"], "Suite Teardown": ["Ok"]},

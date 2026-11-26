@@ -20,8 +20,9 @@ def test_ios_types_into_the_focused_field(monkeypatch):
 
 def test_ios_keyboard_typing_fails_when_nothing_has_focus(monkeypatch):
     server = AppiumServer({"active_element": NoSuchElementException("No element is currently focused")}, page=FORM)
+    driver = started_driver(monkeypatch, server, IOS)
     with pytest.raises(OpticsError) as caught:
-        started_driver(monkeypatch, server, IOS).enter_text_using_keyboard("hello")
+        driver.enter_text_using_keyboard("hello")
     assert caught.value.code == Code.E0401
     assert server.commands(*TYPING) == []
 

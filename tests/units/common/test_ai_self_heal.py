@@ -164,16 +164,18 @@ class TestPressElement:
         assert caught.value.code == Code.E0201
 
     def test_an_llm_config_error_stops_the_session(self, tmp_path):
+        phone, llm = Phone([]), OpticsError(Code.E0501, "credentials_path does not exist")
         with pytest.raises(OpticsError) as caught:
-            phone_keywords(Phone([]), tmp_path, llm=OpticsError(Code.E0501, "credentials_path does not exist"))
+            phone_keywords(phone, tmp_path, llm=llm)
         assert caught.value.code == Code.E0501
 
     def test_the_heal_prompt_names_the_suite_element(self, tmp_path):
         model = ScriptedModel()
+        action = phone_keywords(Phone([]), tmp_path, llm=model).action_keyword
         named = test_context.element_names.set({"//*[@content-desc='Chronometer']": "stopwatch_tab"})
         try:
             with pytest.raises(OpticsError):
-                phone_keywords(Phone([]), tmp_path, llm=model).action_keyword.press_element("//*[@content-desc='Chronometer']")
+                action.press_element("//*[@content-desc='Chronometer']")
         finally:
             test_context.element_names.reset(named)
         assert "TARGET ELEMENT NAME (from the test suite): stopwatch_tab" in model.prompts[0]
