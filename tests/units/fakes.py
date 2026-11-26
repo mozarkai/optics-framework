@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 
 from optics_framework.api.keywords import build_keywords
@@ -206,13 +207,16 @@ PhoneDriver.__abstractmethods__ = frozenset()
 
 
 class PhoneSource(ElementSourceInterface):
-    """What ``phone`` shows: its nodes by text, a white screenshot and its page source."""
+    """What ``phone`` shows: its nodes by text, a screenshot with their text drawn on it and its page source."""
 
     def __init__(self, phone, driver):
         self.phone, self.driver = phone, driver
 
     def capture(self):
-        return np.full((100, 100, 3), 255, dtype=np.uint8)
+        frame = np.full((100, 100, 3), 255, dtype=np.uint8)
+        for node in self.phone.shown():
+            cv2.putText(frame, node.text, node.at, cv2.FONT_HERSHEY_PLAIN, 0.5, (0, 0, 0))
+        return frame
 
     def locate(self, element, index=None):
         node = self.phone.find(element, int(index or 0))
