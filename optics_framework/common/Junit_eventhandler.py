@@ -1,4 +1,4 @@
-from optics_framework.common.events import EventSubscriber, Event, EventStatus, get_event_manager
+from optics_framework.common.events import EntityType, EventSubscriber, Event, EventStatus, get_event_manager
 import json
 import xml.etree.ElementTree as ET #nosec B405
 from pathlib import Path
@@ -225,20 +225,20 @@ class JUnitEventHandler(EventSubscriber):
             f"JUnitEventHandler received event: {event.model_dump()}")
         self.json_events.append(event.model_dump())
         session_id = event.extra.get("session_id") if event.extra else None
-        if not session_id and event.entity_type == "test_case":
+        if not session_id and event.entity_type == EntityType.TEST_CASE:
             internal_logger.warning(
                 f"Test case event missing session_id: {event.model_dump()}")
             execution_logger.warning(
                 f"Test case event missing session_id: {event.model_dump()}")
             return
 
-        if event.entity_type == "test_case":
+        if event.entity_type == EntityType.TEST_CASE:
             if session_id is None:
                 return
             self._handle_test_case_event(event, self._session_suite(session_id), session_id)
-        elif event.entity_type == "module":
+        elif event.entity_type == EntityType.MODULE:
             self._handle_module_event(event)
-        elif event.entity_type == "keyword":
+        elif event.entity_type == EntityType.KEYWORD:
             self._handle_keyword_event(event)
 
     def _session_suite(self, session_id: str) -> ET.Element:
@@ -431,7 +431,7 @@ class JUnitEventHandler(EventSubscriber):
                 kw.set("status", EventStatus.ERROR.value)
                 kw.set("code", Code.E0706.value)
         unfinished = Event(
-            entity_type="test_case", entity_id=testcase.get("id", ""), name=testcase.get("name", ""),
+            entity_type=EntityType.TEST_CASE, entity_id=testcase.get("id", ""), name=testcase.get("name", ""),
             status=EventStatus.ERROR, message="The run ended before this test case reported a result.", code=Code.E0706,
         )
         self._handle_test_case_event(unfinished, suite, session_id)

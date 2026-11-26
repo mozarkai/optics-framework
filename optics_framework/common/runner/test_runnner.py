@@ -46,6 +46,7 @@ from optics_framework.common.models import (
     ApiData,
 )
 from optics_framework.common.events import (
+    EntityType,
     EventStatus,
     CommandType,
     Event,
@@ -205,7 +206,7 @@ def popup_event(popup: dict, session_id: str, keyword: str, keyword_id: str, mod
     """The ``popup`` event for one inspection the guard recorded; its fields travel in ``args``, since ``extra`` holds strings only."""
     verdict = popup["verdict"]
     return Event(
-        entity_type="popup",
+        entity_type=EntityType.POPUP,
         entity_id=keyword_id,
         name=keyword,
         status=EventStatus.PASS if verdict in (Verdict.HANDLED, Verdict.NONE) else EventStatus.FAIL,
@@ -400,7 +401,7 @@ class TestRunner(Runner):
 
     async def _send_event(
         self,
-        entity_type: str,
+        entity_type: EntityType,
         node: Node,
         status: EventStatus,
         reason: Optional[str] = None,
@@ -489,7 +490,7 @@ class TestRunner(Runner):
 
             keyword_node.state = State.RUNNING
             await self._send_event(
-                "keyword",
+                EntityType.KEYWORD,
                 keyword_node,
                 EventStatus.RUNNING,
                 parent_id=module_node.id,
@@ -550,7 +551,7 @@ class TestRunner(Runner):
         keyword_result.reason = reason
         keyword_result.hint = self._last_failure_hint or ""
         await self._send_event(
-            "keyword",
+            EntityType.KEYWORD,
             keyword_node,
             EventStatus.FAIL,
             reason=reason,
@@ -576,7 +577,7 @@ class TestRunner(Runner):
         keyword_result.reason = reason
         keyword_result.hint = self._last_failure_hint or ""
         await self._send_event(
-            "keyword",
+            EntityType.KEYWORD,
             keyword_node,
             EventStatus.FAIL,
             reason,
@@ -609,7 +610,7 @@ class TestRunner(Runner):
         keyword_result.stored = stored
         keyword_node.state = State.COMPLETED_PASSED
         await self._send_event(
-            "keyword",
+            EntityType.KEYWORD,
             keyword_node,
             EventStatus.PASS,
             parent_id=module_node.id,
@@ -645,7 +646,7 @@ class TestRunner(Runner):
         keyword_result.reason = reason
         keyword_result.hint = self._last_failure_hint or ""
         await self._send_event(
-            "keyword",
+            EntityType.KEYWORD,
             keyword_node,
             status,
             reason,
@@ -803,7 +804,7 @@ class TestRunner(Runner):
             if handler:
                 handler.add_detected_errors(self.session_id, matched)
             await self._send_event(
-                "test_case", TestCaseNode(name=ON_SCREEN_ERROR_CASE, id=detection.id), EventStatus.FAIL,
+                EntityType.TEST_CASE, TestCaseNode(name=ON_SCREEN_ERROR_CASE, id=detection.id), EventStatus.FAIL,
                 reason="; ".join(describe_detected_error(m) for m in matched),
             )
         except Exception as e:
@@ -819,7 +820,7 @@ class TestRunner(Runner):
         start_time = time.time()
         module_node.state = State.RUNNING
         await self._send_event(
-            "module",
+            EntityType.MODULE,
             module_node,
             EventStatus.RUNNING,
             parent_id=test_case_result.id,
@@ -836,7 +837,7 @@ class TestRunner(Runner):
             module_result.reason = reason
             module_result.hint = self._last_failure_hint or ""
             await self._send_event(
-                "module",
+                EntityType.MODULE,
                 module_node,
                 EventStatus.FAIL,
                 reason=reason,
@@ -859,7 +860,7 @@ class TestRunner(Runner):
             ):
                 module_node.state = State.COMPLETED_FAILED
                 await self._send_event(
-                    "module",
+                    EntityType.MODULE,
                     module_node,
                     self._last_failure_status,
                     reason=self._last_failure_reason,
@@ -880,7 +881,7 @@ class TestRunner(Runner):
 
         module_node.state = State.COMPLETED_PASSED
         await self._send_event(
-            "module",
+            EntityType.MODULE,
             module_node,
             EventStatus.PASS,
             parent_id=test_case_result.id,
@@ -913,7 +914,7 @@ class TestRunner(Runner):
                 test_case_result.name,
             )
             await self._send_event(
-                "test_case",
+                EntityType.TEST_CASE,
                 TestCaseNode(name=test_case, id=testcase_id),
                 EventStatus.FAIL,
                 reason=f"Test case not found: {test_case}",
@@ -935,7 +936,7 @@ class TestRunner(Runner):
         self.result_printer.test_state[test_case] = test_case_result
         current.state = State.RUNNING
         await self._send_event(
-            "test_case", current, EventStatus.RUNNING, start_time=start_time
+            EntityType.TEST_CASE, current, EventStatus.RUNNING, start_time=start_time
         )
         self._update_status(
             test_case_result, "RUNNING", time.time() - start_time, test_case_result.name
@@ -949,7 +950,7 @@ class TestRunner(Runner):
                 ):
                     current.state = State.COMPLETED_FAILED
                     await self._send_event(
-                        "test_case",
+                        EntityType.TEST_CASE,
                         current,
                         EventStatus.FAIL,
                         reason=self._last_failure_reason,
@@ -972,7 +973,7 @@ class TestRunner(Runner):
                     current.state = State.COMPLETED_FAILED
                     self._capture_failure_artifacts(current.name)
                     await self._send_event(
-                        "test_case",
+                        EntityType.TEST_CASE,
                         current,
                         self._last_failure_status,
                         reason=self._last_failure_reason,
@@ -992,7 +993,7 @@ class TestRunner(Runner):
 
         current.state = State.COMPLETED_PASSED
         await self._send_event(
-            "test_case",
+            EntityType.TEST_CASE,
             current,
             EventStatus.PASS,
             start_time=start_time,
@@ -1042,7 +1043,7 @@ class TestRunner(Runner):
         start_time = time.time()
         module_node.state = State.RUNNING
         await self._send_event(
-            "module",
+            EntityType.MODULE,
             module_node,
             EventStatus.RUNNING,
             parent_id=testcase_id,
@@ -1057,7 +1058,7 @@ class TestRunner(Runner):
             module_result.reason = reason
             module_result.hint = self._last_failure_hint or ""
             await self._send_event(
-                "module",
+                EntityType.MODULE,
                 module_node,
                 EventStatus.FAIL,
                 reason=reason,
@@ -1077,7 +1078,7 @@ class TestRunner(Runner):
             )
             keyword_current.state = State.RUNNING
             await self._send_event(
-                "keyword",
+                EntityType.KEYWORD,
                 keyword_current,
                 EventStatus.RUNNING,
                 parent_id=module_node.id,
@@ -1096,7 +1097,7 @@ class TestRunner(Runner):
                 keyword_result.hint = self._last_failure_hint or ""
                 keyword_current.state = State.COMPLETED_FAILED
                 await self._send_event(
-                    "keyword",
+                    EntityType.KEYWORD,
                     keyword_current,
                     EventStatus.FAIL,
                     reason,
@@ -1112,7 +1113,7 @@ class TestRunner(Runner):
 
             keyword_current.state = State.COMPLETED_PASSED
             await self._send_event(
-                "keyword",
+                EntityType.KEYWORD,
                 keyword_current,
                 EventStatus.PASS,
                 parent_id=module_node.id,
@@ -1125,7 +1126,7 @@ class TestRunner(Runner):
 
         module_node.state = State.COMPLETED_PASSED
         await self._send_event(
-            "module", module_node, EventStatus.PASS, parent_id=testcase_id
+            EntityType.MODULE, module_node, EventStatus.PASS, parent_id=testcase_id
         )
         self._update_status(module_result, "PASS", 0.0, test_case_result.name)
         return True
@@ -1168,7 +1169,7 @@ class TestRunner(Runner):
 
     async def _skip_test_case(self, node: TestCaseNode, reason: str) -> None:
         node.state = State.SKIPPED
-        await self._send_event("test_case", node, EventStatus.NOT_RUN, reason=reason)
+        await self._send_event(EntityType.TEST_CASE, node, EventStatus.NOT_RUN, reason=reason)
         result = self.result_printer.test_state.get(node.name)
         if result is not None:
             self._update_status(result, "SKIPPED", 0.0, node.name)
@@ -1268,7 +1269,7 @@ class PytestRunner(Runner):
             self._handle_keyword_fail(keyword, keyword_id, module_id, keyword_not_found(keyword, self.keyword_map))
         queue_event_sync(
             Event(
-                entity_type="keyword",
+                entity_type=EntityType.KEYWORD,
                 entity_id=keyword_id,
                 name=keyword,
                 status=EventStatus.PASS,
@@ -1283,7 +1284,7 @@ class PytestRunner(Runner):
     def _queue_event_running(self, keyword, keyword_id, module_id):
         queue_event_sync(
             Event(
-                entity_type="keyword",
+                entity_type=EntityType.KEYWORD,
                 entity_id=keyword_id,
                 name=keyword,
                 status=EventStatus.RUNNING,
@@ -1297,7 +1298,7 @@ class PytestRunner(Runner):
         self._note_failure(message, code, hint=hint)
         queue_event_sync(
             Event(
-                entity_type="keyword",
+                entity_type=EntityType.KEYWORD,
                 entity_id=keyword_id,
                 name=keyword,
                 status=EventStatus.FAIL,
@@ -1335,7 +1336,7 @@ class PytestRunner(Runner):
     def _queue_keyword_pass_event(self, keyword, keyword_id, module_id, stored=None):
         queue_event_sync(
             Event(
-                entity_type="keyword",
+                entity_type=EntityType.KEYWORD,
                 entity_id=keyword_id,
                 name=keyword,
                 status=EventStatus.PASS,
@@ -1359,7 +1360,7 @@ class PytestRunner(Runner):
         module_id = str(uuid.uuid4())
         queue_event_sync(
             Event(
-                entity_type="module",
+                entity_type=EntityType.MODULE,
                 entity_id=module_id,
                 name=module_name,
                 status=EventStatus.RUNNING,
@@ -1375,7 +1376,7 @@ class PytestRunner(Runner):
             self._note_failure(reason, Code.E0402)
             queue_event_sync(
                 Event(
-                    entity_type="module",
+                    entity_type=EntityType.MODULE,
                     entity_id=module_id,
                     name=module_name,
                     status=EventStatus.FAIL,
@@ -1409,7 +1410,7 @@ class PytestRunner(Runner):
     def _queue_module_event(self, module_id, module_name, testcase_id, passed):
         queue_event_sync(
             Event(
-                entity_type="module",
+                entity_type=EntityType.MODULE,
                 entity_id=module_id,
                 name=module_name,
                 status=EventStatus.PASS if passed else EventStatus.FAIL,
@@ -1482,7 +1483,7 @@ class PytestRunner(Runner):
     def _queue_test_case_event(self, testcase_id, name, kind, status, message=None, code=None):
         queue_event_sync(
             Event(
-                entity_type="test_case",
+                entity_type=EntityType.TEST_CASE,
                 entity_id=testcase_id,
                 name=name,
                 status=status,
@@ -1586,7 +1587,7 @@ def runner():
             internal_logger.info("Pytest execution completed successfully")
             queue_event_sync(
                 Event(
-                    entity_type="execution",
+                    entity_type=EntityType.EXECUTION,
                     entity_id="pytest",
                     name="Pytest",
                     status=EventStatus.PASS,
@@ -1600,7 +1601,7 @@ def runner():
             internal_logger.error("Pytest execution failed")
             queue_event_sync(
                 Event(
-                    entity_type="execution",
+                    entity_type=EntityType.EXECUTION,
                     entity_id="pytest",
                     name="Pytest",
                     status=EventStatus.FAIL,

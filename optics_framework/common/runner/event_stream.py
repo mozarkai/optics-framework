@@ -5,25 +5,27 @@ from datetime import datetime
 from enum import Enum
 from typing import TextIO
 
-from optics_framework.common.events import Event, EventStatus, EventSubscriber
+from optics_framework.common.events import EntityType, Event, EventStatus, EventSubscriber
 
 EVENT_STREAM_SUBSCRIBER_ID = "event_stream_printer"
 
 _LABELS = {
-    "execution": "run",
-    "test_case": "test case",
-    "module": "module",
-    "keyword": "keyword",
-    "popup": "popup",
+    EntityType.EXECUTION: "run",
+    EntityType.TEST_CASE: "test case",
+    EntityType.MODULE: "module",
+    EntityType.KEYWORD: "keyword",
+    EntityType.POPUP: "popup",
 }
-_DEPTH = {"execution": 0, "test_case": 0, "module": 1, "keyword": 2, "popup": 3}
+_DEPTH = {
+    EntityType.EXECUTION: 0, EntityType.TEST_CASE: 0, EntityType.MODULE: 1, EntityType.KEYWORD: 2, EntityType.POPUP: 3,
+}
 _PROBLEMS = (EventStatus.FAIL, EventStatus.ERROR)
 _HEALED = "HEALED"
 _STATUS_WIDTH = max(len(_HEALED), *(len(status.value) for status in EventStatus))
 
 
 def _popup_fields(event: Event) -> dict:
-    return event.args if event.entity_type == "popup" and isinstance(event.args, dict) else {}
+    return event.args if event.entity_type == EntityType.POPUP and isinstance(event.args, dict) else {}
 
 
 class OutputMode(str, Enum):
@@ -74,7 +76,7 @@ class EventStreamPrinter(EventSubscriber):
     async def on_event(self, event: Event) -> None:
         if event.entity_type not in _LABELS or _popup_fields(event).get("verdict") == "none":
             return
-        if event.entity_type == "execution":
+        if event.entity_type == EntityType.EXECUTION:
             if event.status not in _PROBLEMS or self._run_reported:
                 return
             self._run_reported = True
@@ -91,9 +93,9 @@ class EventStreamPrinter(EventSubscriber):
         healed = event.status is EventStatus.PASS and event.extra.get("healed") == "true"
         status = _HEALED if healed else event.status.value
         popup = _popup_fields(event)
-        subject = (popup.get("rule") or "no rule") if event.entity_type == "popup" else event.name
+        subject = (popup.get("rule") or "no rule") if event.entity_type == EntityType.POPUP else event.name
         line = f'{clock} {status:<{_STATUS_WIDTH}} {indent}{_LABELS[event.entity_type]} "{subject}"'
-        if event.entity_type == "popup":
+        if event.entity_type == EntityType.POPUP:
             line += f" {popup.get('verdict')}"
         if event.elapsed is not None and event.status is not EventStatus.RUNNING:
             line += f" ({event.elapsed:.1f}s)"
@@ -107,8 +109,8 @@ class EventStreamPrinter(EventSubscriber):
         """The failure's message and code; a parent that failed for its step's reason shows only the code."""
         message = " ".join(event.message.split())
         code = f" [{event.code}]" if event.code else ""
-        repeated = event.entity_type != "keyword" and message and message == self._last_reason
-        if event.entity_type == "test_case":
+        repeated = event.entity_type != EntityType.KEYWORD and message and message == self._last_reason
+        if event.entity_type == EntityType.TEST_CASE:
             self._last_reason = None
         elif message:
             self._last_reason = message

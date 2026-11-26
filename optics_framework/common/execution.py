@@ -18,7 +18,7 @@ from optics_framework.common.models import TestCaseNode
 from optics_framework.common.error import OpticsError, Code, explain
 from optics_framework.common.utils import _is_list_type
 from optics_framework.api.keywords import build_keywords
-from optics_framework.common.events import Event, EventManager, EventStatus, get_event_manager
+from optics_framework.common.events import EntityType, Event, EventManager, EventStatus, get_event_manager
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
 EXECUTION_FAILED = "Execution failed"
@@ -55,7 +55,7 @@ class BatchExecutor(Executor):
         event_manager = self.event_manager
         if not session.test_cases:
             await event_manager.publish_event(Event(
-                entity_type="execution",
+                entity_type=EntityType.EXECUTION,
                 entity_id=session.session_id,
                 name="Execution",
                 status=EventStatus.ERROR,
@@ -74,7 +74,7 @@ class BatchExecutor(Executor):
                 status = EventStatus.PASS if all_passed else EventStatus.FAIL
                 message = "All test cases completed" if all_passed else "Some test cases failed"
             await event_manager.publish_event(Event(
-                entity_type="execution",
+                entity_type=EntityType.EXECUTION,
                 entity_id=session.session_id,
                 name="Execution",
                 status=status,
@@ -102,7 +102,7 @@ class DryRunExecutor(Executor):
         event_manager = self.event_manager
         if not session.test_cases:
             await event_manager.publish_event(Event(
-                entity_type="execution",
+                entity_type=EntityType.EXECUTION,
                 entity_id=session.session_id,
                 name="Execution",
                 status=EventStatus.ERROR,
@@ -118,7 +118,7 @@ class DryRunExecutor(Executor):
             status = EventStatus.PASS if all_passed else EventStatus.FAIL
             message = "All test cases dry run completed"
         await event_manager.publish_event(Event(
-            entity_type="execution",
+            entity_type=EntityType.EXECUTION,
             entity_id=session.session_id,
             name="Execution",
             status=status,
@@ -186,7 +186,7 @@ class KeywordExecutor(Executor):
                     heal_info = pop_heal(runner.keyword_map)
             except Exception as e:
                 await event_manager.publish_event(Event(
-                    entity_type="keyword",
+                    entity_type=EntityType.KEYWORD,
                     entity_id=session.session_id,
                     name=self.keyword,
                     status=EventStatus.FAIL,
@@ -199,7 +199,7 @@ class KeywordExecutor(Executor):
             if heal_info:
                 extra.update(heal_extra(heal_info, heal_info.get("suggested_steps", [])))
             await event_manager.publish_event(Event(
-                entity_type="keyword",
+                entity_type=EntityType.KEYWORD,
                 entity_id=session.session_id,
                 name=self.keyword,
                 status=EventStatus.PASS,
@@ -217,7 +217,7 @@ class KeywordExecutor(Executor):
         else:
             error = keyword_not_found(self.keyword, runner.keyword_map)
             await event_manager.publish_event(Event(
-                entity_type="keyword",
+                entity_type=EntityType.KEYWORD,
                 entity_id=session.session_id,
                 name=self.keyword,
                 status=EventStatus.FAIL,
@@ -270,7 +270,7 @@ def _execution_event(
 ) -> Event:
     """Build a standard execution Event; with ``error``, ``message`` is the context its reason follows."""
     fields = _failure_fields(error, session_id, message) if error else {"message": message, "extra": {"session_id": session_id}}
-    return Event(entity_type="execution", entity_id=session_id, name="Execution", status=status, **fields)
+    return Event(entity_type=EntityType.EXECUTION, entity_id=session_id, name="Execution", status=status, **fields)
 
 
 class ExecutionEngine:
@@ -289,7 +289,7 @@ class ExecutionEngine:
         """Validate session and test cases; publish errors and raise if invalid."""
         if not session:
             await event_manager.publish_event(Event(
-                entity_type="session",
+                entity_type=EntityType.SESSION,
                 entity_id=params.session_id,
                 name="Session",
                 status=EventStatus.ERROR,

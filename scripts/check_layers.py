@@ -22,9 +22,10 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "common.config_handler", "common.models", "common.expression", "common.permissions",
         "common.runner.step_params", "helper.case_selection",
     )),
-    ("events and report", (
-        "common.events", "common.Junit_eventhandler", "common.eventSDK", "common.execution_tracer",
-        "common.error_detection", "common.keyword_outcome", "common.runner.printers", "common.runner.event_stream",
+    ("event contract", ("common.events",)),
+    ("report", (
+        "common.Junit_eventhandler", "common.eventSDK", "common.execution_tracer", "common.error_detection",
+        "common.keyword_outcome", "common.runner.printers", "common.runner.event_stream",
     )),
     ("drivers", ("engines.drivers.", "common.driver_interface", "common.session_liveness", "common.popup_screen")),
     ("locator pipeline", (
