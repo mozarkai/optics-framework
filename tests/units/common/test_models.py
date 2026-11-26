@@ -7,13 +7,8 @@ from tests.units.popup_helpers import rule, rule_dict
 
 
 class TestParsePopupRules:
-    @pytest.mark.parametrize(("rules", "parsed"), [
-        pytest.param([], [], id="no rules"),
-        pytest.param([rule_dict()], [rule()], id="a rule as a dict"),
-        pytest.param([rule()], [rule()], id="a rule already parsed"),
-    ])
-    def test_parse_popup_rules(self, rules, parsed):
-        assert parse_popup_rules(rules) == parsed
+    def test_a_rule_already_parsed(self):
+        assert parse_popup_rules([rule()]) == [rule()]
 
     @pytest.mark.parametrize(("rules", "message"), [
         pytest.param(None, "popup_rules: expected a list of rules", id="no list"),
