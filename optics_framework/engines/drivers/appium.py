@@ -598,10 +598,10 @@ class Appium(DriverInterface):
     def _start_held_app(self, package: str, activity: Optional[str]) -> None:
         driver = self._require_driver()
         if activity:
-            driver.execute_script("mobile: startActivity", {"intent": f"{package}/{activity}"})
+            # In front before launch_app checks it, so the check never reopens the package's default activity.
+            driver.execute_script("mobile: startActivity", {"intent": f"{package}/{activity}", "wait": True})
         else:
             driver.activate_app(package)
-        self._wait_until_in_front(driver, package)
 
     def apply_permissions(self) -> None:
         """Grant or revoke each configured permission for the app under test on Android; on iOS it only warns."""
@@ -1129,15 +1129,17 @@ class Appium(DriverInterface):
                 app_activity=app_activity,
                 event_name=event_name,
             )
-            self._show_started_app(app_identifier)
+            self._show_started_app(app_identifier or self._own_app())
         else:
             # With no app named, bring back the session's own app: launch_other_app may have put another in front.
-            # A TV has no other app to come back from, and its driver takes no activate command.
-            own = None if self.is_web_ui() else session_app(self._session_capabilities())
-            self._bring_to_front(app_identifier or own)
+            self._bring_to_front(app_identifier or self._own_app())
 
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
+
+    def _own_app(self) -> Optional[str]:
+        """The app the session names; a TV has no other app to come back from, and its driver takes no activate command."""
+        return None if self.is_web_ui() else session_app(self._session_capabilities())
 
     def _show_started_app(self, app: Optional[str]) -> None:
         """An attached session, or autoLaunch off, can leave another app in front of the one the session names."""
