@@ -65,7 +65,6 @@ MSG_KEYWORD_FAILED = "Keyword execution failed"
 MSG_INVALID_API_DATA = "Invalid api_data:"
 MSG_SESSION_CREATION_FAILED = "Session creation failed:"
 MSG_EXECUTION_FAILED = "Execution failed:"
-MSG_SESSION_TERMINATION_FAILED = "Session termination failed:"
 MSG_INVALID_BASE64_IMAGE = "Invalid base64 image data:"
 
 # --- Execution / request ---
@@ -910,7 +909,7 @@ async def execute_keyword(session_id: str, request: ExecuteRequest):
     """
     session = session_manager.get_session(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)  # NOSONAR delete_session turns this into a 500
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
 
     if request.mode != MODE_KEYWORD or not request.keyword:
         raise HTTPException(status_code=400, detail=MSG_ONLY_KEYWORD_MODE_SUPPORTED)  # NOSONAR delete_session turns this into a 500
@@ -1492,14 +1491,16 @@ async def event_generator(session: Session):
     "/v1/sessions/{session_id}/stop",
     response_model=TerminationResponse,
     responses={
-        500: {"description": "Session termination failed"},
+        404: {"description": SESSION_NOT_FOUND},
     },
 )
 async def delete_session(session_id: str):
     """
-    Terminate the specified session and clean up resources.
-    Returns termination status.
+    Close the session's app, then terminate the session and clean up its resources,
+    even when the app does not close.
     """
+    if not session_manager.get_session(session_id):
+        raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND)
     kill_request = ExecuteRequest(
         mode=MODE_KEYWORD,
         keyword=KEYWORD_CLOSE_AND_TERMINATE_APP,
@@ -1507,14 +1508,9 @@ async def delete_session(session_id: str):
     )
     try:
         await execute_keyword(session_id, kill_request)
-    except OpticsError as e:
-        internal_logger.error(f"Failed to terminate session {session_id}: {e}")
-        raise HTTPException(status_code=e.status_code, detail=e.to_payload(include_status=True)) from e
     except Exception as e:
-        internal_logger.error(f"Failed to terminate session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"{MSG_SESSION_TERMINATION_FAILED} {e}") from e
+        internal_logger.warning(f"Could not close the app of session {session_id}; terminating it anyway: {e}")
     session_manager.terminate_session(session_id)
-    # Clean up workspace hash entry to prevent memory leak
     workspace_hashes.pop(session_id, None)
     internal_logger.info(f"Terminated session: {session_id}")
     return TerminationResponse()

@@ -54,14 +54,16 @@ def session():
     expose_api.session_manager.terminate_session(session_id)
 
 
-def test_pin_stopping_a_session_that_does_not_exist_is_a_server_error(client):
-    assert client.delete("/v1/sessions/missing/stop").status_code == 500
-
-
-@pytest.mark.skip(reason="bug: delete_session turns every HTTPException from execute_keyword into a 500, "
-                         "so a missing session is not a 404 and a session whose app will not close stays open")
 def test_stopping_a_session_that_does_not_exist_is_not_found(client):
-    assert client.delete("/v1/sessions/missing/stop").status_code == 404
+    resp = client.delete("/v1/sessions/missing/stop")
+    assert (resp.status_code, resp.json()["detail"]) == (404, expose_api.SESSION_NOT_FOUND)
+
+
+def test_a_session_whose_app_does_not_close_is_still_stopped(client):
+    session_id = expose_api.session_manager.create_session(Config(), None, None, None, None)
+    resp = client.delete(f"/v1/sessions/{session_id}/stop")
+    assert (resp.status_code, resp.json()["status"]) == (200, "terminated")
+    assert expose_api.session_manager.get_session(session_id) is None
 
 
 def test_add_session_api_invalid_data_returns_400(client, session):
