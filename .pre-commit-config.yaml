@@ -18,6 +18,12 @@ repos:
         entry: python scripts/check_tests.py
         language: python
         files: ^tests/
+      - id: check-layers
+        name: layer order
+        entry: python scripts/check_layers.py
+        language: python
+        files: ^(optics_framework/.*\.py|scripts/check_layers\.py)$
+        pass_filenames: false
       - id: sonar-lint
         name: sonar rules (changed lines)
         entry: python scripts/sonar_lint.py

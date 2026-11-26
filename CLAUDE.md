@@ -209,6 +209,17 @@ Adding a method to an API class is **not enough** if the keyword should be reach
 - **A new strategy:** subclass `LocatorStrategy` (`strategies.py:88`) and register `(cls, element_type, kwargs, priority)` in `StrategyFactory._registry` (`:744`). Implement `locate`, `check_elements(elements, visible, frame)` (one look, no waiting) and the static `supports`; override `can_assert(element)` only when it should sit out some locators. Vision strategies should also expose `locate_with_aoi`.
 - **A new sample / template:** a directory under `optics_framework/samples/` with `config.yaml`, `test_cases/*.csv`, `modules/*.csv`, `test_data/`, surfaced via `optics init --template <dirname>`.
 
+## Layer order
+
+`scripts/check_layers.py` (a pre-commit hook) holds the layers, lowest first, and refuses an import from a module to a module in a later layer. An import inside a function counts: it hides an import cycle from Python, but the two layers still depend on each other.
+
+Run context → kernel → `utils` → project model → events and report → drivers → locator pipeline → agent kernel → session assembly → recovery → keyword API → project reader → execution engine → front ends.
+
+- **Run context** is `common/test_context.py`. The runner writes its context variables and the lower layers read them, so it imports nothing from the package.
+- **Project model** holds `runner/step_params.py`, which binds a step's params to a keyword. **Project reader** is `runner/data_reader.py`: the YAML step parser needs the keyword catalogue, so the reader comes after the keyword API, and no layer before it can import it.
+- When a lower layer needs a higher one at run time, the higher layer gives it a callable: `logging_config.on_shutdown` (the JUnit registry adds `close_all`), `PopupIO`, `KeywordExecutor`.
+- Give a new module a layer in `LAYERS`. When the check fails, move the code to the layer that owns it; do not move the module's name to a later layer to make the check pass.
+
 ## Key data structures
 
 - **Execution graph** — `TestCaseNode` (`models.py:83`) → `ModuleNode` (`:48`) → `KeywordNode` (`:38`), each with `state: State` (`:9`) mirroring `EventStatus` (`events.py:14`). Traverse with `current = head; while current: ...; current = current.next`.
@@ -268,7 +279,7 @@ When a change breaks a test, either the test found a regression (fix the code) o
 
 ## Hard rules
 
-1. **Run pre-commit before committing** (`poetry run pre-commit run --files <changed>` or the git hook; never `--no-verify`). It chains ruff, bandit, whitespace/YAML/JSON checks, commitizen, gitleaks and `scripts/sonar_lint.py`, which runs the SonarCloud rules this project keeps hitting offline, on the changed lines only (`--all` for every line, `SONAR_LINT_BASE` for another base). Suppress a finding with `# NOSONAR`, which SonarCloud also honours.
+1. **Run pre-commit before committing** (`poetry run pre-commit run --files <changed>` or the git hook; never `--no-verify`). It chains ruff, bandit, whitespace/YAML/JSON checks, commitizen, gitleaks, `scripts/check_layers.py` (see "Layer order") and `scripts/sonar_lint.py`, which runs the SonarCloud rules this project keeps hitting offline, on the changed lines only (`--all` for every line, `SONAR_LINT_BASE` for another base). Suppress a finding with `# NOSONAR`, which SonarCloud also honours.
 2. **Trace the blast radius before changing a function** (`grep -rn "<name>" optics_framework/ tests/`):
    - Renaming a public method on `ActionKeyword` / `AppManagement` / `Verifier` / `FlowControl` breaks every CSV/YAML that names it, its `optics.py:Optics` wrapper and the code `optics generate` emits.
    - A keyword's Robot display name (the `@keyword(...)` string) is independent of the method name.
