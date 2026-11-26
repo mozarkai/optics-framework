@@ -8,7 +8,9 @@ import time
 from datetime import datetime
 import logging
 import threading
-from optics_framework.common.logging_config import internal_logger, execution_logger, mask_secrets, mask_secret_values
+from optics_framework.common.logging_config import (
+    internal_logger, execution_logger, mask_secrets, mask_secret_values, on_shutdown,
+)
 from optics_framework.common.config_handler import Config
 from optics_framework.common.error import Code
 from optics_framework.common.error_detection import ON_SCREEN_ERROR_CASE, describe_detected_error
@@ -86,7 +88,16 @@ class JUnitHandlerRegistry:
         with self._lock:
             return list(self._handlers.keys())
 
+    def close_all(self) -> None:
+        """Close every session's handler, so each report is written before the process ends."""
+        for session_id in self.get_active_sessions():
+            handler = self.get_handler(session_id)
+            if handler:
+                handler.close()
+                internal_logger.debug(f"Flushed JUnit handler for session {session_id}")
+
 _junit_handler_registry = JUnitHandlerRegistry()
+on_shutdown(_junit_handler_registry.close_all)
 
 def setup_junit(session_id: str, config: Config) -> None:
     """Setup JUnit logging for a specific session."""
