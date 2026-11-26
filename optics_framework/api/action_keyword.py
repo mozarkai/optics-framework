@@ -12,7 +12,7 @@ from optics_framework.common.instance_fallback import InstanceFallback
 from optics_framework.common import keyword_outcome, test_context, utils
 from optics_framework.common.agent_core import bind, runner_params, visible_params
 from optics_framework.common.ai_self_heal import (
-    VALUE_PLACEHOLDER, AISelfHealHandler, HealContext, HealKeywordSpec, KeywordExecResult,
+    VALUE_PLACEHOLDER, AISelfHealHandler, HealContext, HealGuide, HealKeywordSpec, KeywordExecResult,
 )
 from optics_framework.common.error import Code, ElementNotFound, OpticsError, element_label, is_element_not_found
 from optics_framework.common.popup_guard import STOPS as _POPUP_STOPS, PopupGuard, PopupIO, PopupRun, Verdict
@@ -208,6 +208,28 @@ def _percent(value: Any, name: str, parse: Callable[[Any], Any] = float) -> Any:
     return _bounded(value, name, 0, 100, parse)
 
 
+HEAL_GUIDE = HealGuide(
+    target="""\
+`press_element` is the main tool: give it the target's visible text and the framework locates it \
+through its full ladder (XPath -> text -> OCR -> image), so naming a target by its visible text is \
+more reliable than coordinates. Take exact text, content-desc or resource id from the condensed \
+hierarchy. When CURRENT SCREEN rows are listed, put the ref of the element of `press_element` or \
+`enter_text` in `target` instead, and leave it out of `params`.
+
+A failed keyword's typed value shows only as `<value>`. To recover it, call `enter_text` with the \
+field in `target` and `<value>` as the text: the framework types the value there. Other text is typed as written.""",
+    reach="""\
+For system buttons use `press_keycode` with the Android keycode (HOME=3, BACK=4, \
+RECENTS=187, ENTER=66). Use `press_by_percentage` only for a target that has no text and no \
+keycode.
+
+The two gesture keywords name directions differently:
+- `scroll` names the way you move through the content: "down" reveals content further down.
+- `swipe_by_percentage` names the way the finger moves: "up" (finger drags bottom to top) reveals \
+content further down.""",
+)
+
+
 class _HealProviders:
     """Screenshot, page-source and screen-element providers for one AI self-heal attempt."""
 
@@ -332,6 +354,7 @@ class ActionKeyword:
                 keyword_executor=self._heal_execute,
                 keyword_catalog=self._heal_catalog,
                 curate=True,
+                guide=HEAL_GUIDE,
             )
         internal_logger.info("AI self-heal: attempting recovery for '%s' on '%s'", func_name, element)
         with changing_screen():
