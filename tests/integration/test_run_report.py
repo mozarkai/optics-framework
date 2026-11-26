@@ -200,17 +200,6 @@ def test_a_run_that_cannot_start_gives_each_test_case_its_code(tmp_path):
     assert cases["TC One"].find("error").get("code") == "E0102"
 
 
-def test_run_project_on_a_run_that_cannot_start_exits(tmp_path, monkeypatch):
-    monkeypatch.delenv("OPTICS_SKIP_PREFLIGHT", raising=False)
-    _unreachable_appium(tmp_path)
-    folder = str(tmp_path)
-    with pytest.raises(SystemExit) as stop:
-        run_project(folder, use_printer=False)
-    assert stop.value.code == 1
-    assert not (tmp_path / "execution_output" / "junit_output.xml").exists()
-
-
-@pytest.mark.skip(reason="bug: run_project exits on a run that cannot start, and its report is written only at interpreter exit")
 def test_run_project_on_a_run_that_cannot_start_returns_false_with_its_report(tmp_path, monkeypatch):
     monkeypatch.delenv("OPTICS_SKIP_PREFLIGHT", raising=False)
     _unreachable_appium(tmp_path)
