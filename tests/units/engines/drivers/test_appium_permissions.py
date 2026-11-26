@@ -22,7 +22,7 @@ def test_a_new_android_session_sets_the_permissions_before_it_opens_the_app(monk
     assert server.log[0][1]["appium:autoLaunch"] is False
     assert server.commands("mobile: changePermissions", "mobile: startActivity") == [
         change("grant", CAMERA), change("revoke", "android.permission.POST_NOTIFICATIONS"),
-        ("mobile: startActivity", {"intent": "in.app/.Main"}),
+        ("mobile: startActivity", {"intent": "in.app/.Main", "wait": True}),
     ]
 
 
