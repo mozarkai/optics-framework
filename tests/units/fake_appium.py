@@ -21,6 +21,8 @@ class Element:
 
     @property
     def rect(self):
+        if self.node.get("bounds") is None:
+            return {key: int(self.node.get(key)) for key in ("x", "y", "width", "height")}
         (left, top), (right, bottom) = (map(int, corner.split(",")) for corner in
                                         self.node.get("bounds").strip("[]").split("]["))
         return {"x": left, "y": top, "width": right - left, "height": bottom - top}
