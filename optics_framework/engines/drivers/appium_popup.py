@@ -14,7 +14,7 @@ TEXT_LIMIT = 200
 # Nodes that only a dialog or sheet has; a class name is no help because the dialog's own views are ordinary ones.
 _ANDROID_DIALOG_PANEL = "parentPanel"
 _ANDROID_DIALOG_IDS = ("alertTitle", _ANDROID_DIALOG_PANEL, "button1", "design_bottom_sheet")
-_ANDROID_SYSTEM_PACKAGES = (
+ANDROID_SYSTEM_PACKAGES = (
     "com.android.permissioncontroller", "com.google.android.permissioncontroller",
     "com.android.packageinstaller", "com.google.android.packageinstaller",
 )
@@ -97,7 +97,7 @@ class AppiumScreen:
             if node.tag == "XCUIElementTypeApplication":
                 return node.get("name")
             package = node.get("package")
-            if package and package not in _ANDROID_SYSTEM_PACKAGES:
+            if package and package not in ANDROID_SYSTEM_PACKAGES:
                 return package
         return None
 
@@ -106,7 +106,7 @@ class AppiumScreen:
         for node in self.nodes:
             if (
                 node.tag in _IOS_ALERT_TAGS
-                or node.get("package") in _ANDROID_SYSTEM_PACKAGES
+                or node.get("package") in ANDROID_SYSTEM_PACKAGES
                 or self._resource_name(node) in _ANDROID_DIALOG_IDS
             ):
                 return next((a for a in node.iterancestors() if self._resource_name(a) == _ANDROID_DIALOG_PANEL), node)
@@ -121,7 +121,7 @@ class AppiumScreen:
 
     def kind(self) -> str:
         dialog = self.dialog()
-        system = dialog is not None and (dialog.tag == "XCUIElementTypeAlert" or dialog.get("package") in _ANDROID_SYSTEM_PACKAGES)
+        system = dialog is not None and (dialog.tag == "XCUIElementTypeAlert" or dialog.get("package") in ANDROID_SYSTEM_PACKAGES)
         return "system_alert" if system else "in_app"
 
     def popup_text(self) -> str:
