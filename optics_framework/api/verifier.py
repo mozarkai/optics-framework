@@ -16,6 +16,10 @@ from optics_framework.common.session_liveness import raise_if_session_dead
 _POPUP_ENDS = (*POPUP_STOPS, Code.E0601)
 
 
+def _is_miss(error: OpticsError) -> bool:
+    return is_element_not_found(error.code) and error.code not in (*_POPUP_ENDS, Code.E0205)
+
+
 class Verifier:
     """
     Provides methods to verify elements, screens, and data integrity.
@@ -269,7 +273,7 @@ class Verifier:
         try:
             return self._popup_step(keyword, elements, look)
         except OpticsError as e:
-            if str(fail).strip().lower() != "false" or e.code in (*_POPUP_ENDS, Code.E0205) or not is_element_not_found(e.code):
+            if str(fail).strip().lower() != "false" or not _is_miss(e):
                 raise
             internal_logger.info(f"{keyword}: {e.summary}")
             return False
@@ -302,22 +306,36 @@ class Verifier:
         }
 
     def _process_element_groups(self, grouped_elements: dict, timeout: int, rule: str, method_name: str = "assert_presence") -> tuple:
-        """Process each group of elements and collect results."""
-        result_parts = []
-        timestamps = []
+        """Look for each group within one shared deadline; under ``any`` a group's miss lets the next group look."""
+        result_parts, timestamps, misses = [], [], []
+        deadline = time.monotonic() + timeout
 
         for elem_type, elem_group in grouped_elements.items():
-            if elem_group:
-                status, timestamp, annotated_frame = getattr(self.strategy_manager, method_name)(elem_group, elem_type, timeout, rule)
-                result_parts.append(status)
+            if not elem_group:
+                continue
+            try:
+                status = self._look_for_group(elem_group, elem_type, deadline, rule, method_name, timestamps)
+            except OpticsError as e:
+                if rule != "any" or not _is_miss(e):
+                    raise
+                misses.append(e)
+                continue
+            result_parts.append(status)
+            if rule == "any" and status:
+                break
 
-                if timestamp:
-                    timestamps.append(timestamp)
-
-                if annotated_frame is not None:
-                    self._save_annotated_screenshot(annotated_frame, timestamp)
-
+        if misses and not any(result_parts):
+            raise misses[0]
         return result_parts, timestamps
+
+    def _look_for_group(self, elements: list, element_type: str, deadline: float, rule: str, method_name: str, timestamps: list) -> bool:
+        status, timestamp, annotated_frame = getattr(self.strategy_manager, method_name)(
+            elements, element_type, max(0.0, deadline - time.monotonic()), rule)
+        if timestamp:
+            timestamps.append(timestamp)
+        if annotated_frame is not None:
+            self._save_annotated_screenshot(annotated_frame, timestamp)
+        return status
 
     def _save_annotated_screenshot(self, annotated_frame, timestamp):
         """Save annotated screenshot with timestamp."""

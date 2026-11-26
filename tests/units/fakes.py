@@ -299,12 +299,13 @@ class PhoneBuilder:
     """The builder a session gives the API classes, over ``phone``'s driver and element source. An ``llm`` that is an
     exception is what building the LLM raises."""
 
-    def __init__(self, phone, config, llm=None, ocr=False):
+    def __init__(self, phone, config, llm=None, ocr=False, images=False):
         driver = PhoneDriver(phone)
         self.session_config, self.event_sdk, self.session = config, None, None
         self._driver, self._source = InstanceFallback([driver]), InstanceFallback([PhoneSource(phone, driver)])
         self._llm = InstanceFallback([llm]) if isinstance(llm, LLMInterface) else llm
         self._ocr = InstanceFallback([PhoneOCR(phone)]) if ocr else None
+        self._images = InstanceFallback([PhoneImages(phone)]) if images else None
 
     def get_driver(self):
         return self._driver
@@ -316,7 +317,7 @@ class PhoneBuilder:
         return self._ocr
 
     def get_image_detection(self):
-        return None
+        return self._images
 
     def get_llm(self):
         return given(self._llm)
@@ -334,10 +335,10 @@ def phone_screen(phone, ocr=False, images=False, sources=None):
     )
 
 
-def phone_keywords(phone, output, rules=(), modules=None, llm=None, ocr=False):
+def phone_keywords(phone, output, rules=(), modules=None, llm=None, ocr=False, images=False):
     """The keywords of a session on ``phone``, built by build_keywords as every entry point builds them."""
     config = Config(popup_rules=list(rules), execution_output_path=str(output), ai_self_heal=llm is not None)
-    session = SimpleNamespace(optics=PhoneBuilder(phone, config, llm, ocr), modules=ModuleData(modules=modules or {}),
+    session = SimpleNamespace(optics=PhoneBuilder(phone, config, llm, ocr, images), modules=ModuleData(modules=modules or {}),
                               elements=ElementData(), config_handler=ConfigHandler(config))
     return build_keywords(session)
 
