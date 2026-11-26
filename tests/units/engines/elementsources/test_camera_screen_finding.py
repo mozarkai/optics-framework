@@ -97,14 +97,14 @@ def camera(phone, monkeypatch):
             pass
 
         def do_GET(self):
-            body = cv2.imencode(".png", phone.frame())[1].tobytes()
+            body = cv2.imencode(".bmp", phone.frame())[1].tobytes()
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
     server = HTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_port}/frame"
     server.shutdown()
     server.server_close()
@@ -191,6 +191,16 @@ def test_the_pointer_finds_a_screen_black_to_its_edges(camera, phone, find_scree
     assert phone.pointer is None
 
 
+def _blurred(frame: np.ndarray, sigma: float) -> np.ndarray:
+    """A Gaussian blur; a wide one runs on a smaller copy, since at full size it took seconds per lens sweep."""
+    if sigma <= 4:
+        return cv2.GaussianBlur(frame, (0, 0), sigma)
+    scale = sigma / 2
+    height, width = frame.shape[:2]
+    small = cv2.resize(frame, (round(width / scale), round(height / scale)), interpolation=cv2.INTER_AREA)
+    return cv2.resize(cv2.GaussianBlur(small, (0, 0), 2), (width, height), interpolation=cv2.INTER_LINEAR)
+
+
 class _Webcam:
     """A webcam whose view is sharp only within one lens step of ``peak``; ``None`` is its own autofocus, hunting."""
 
@@ -205,13 +215,14 @@ class _Webcam:
 
     def retrieve(self):
         blur = 30.0 if self.value is None else 0.3 + 0.4 * abs(self.value - self.peak)
-        return True, cv2.GaussianBlur(self.view(), (0, 0), blur)
+        return True, _blurred(self.view(), blur)
 
     read = retrieve
 
     def get(self, prop): return {cv2.CAP_PROP_FRAME_WIDTH: CAMERA[0], cv2.CAP_PROP_FRAME_HEIGHT: CAMERA[1]}.get(prop, 30.0)
     def set(self, prop, value): return False
     def grab(self): return True
+    def release(self): pass
     def getBackendName(self): return "AVFOUNDATION"
     isOpened = grab
 

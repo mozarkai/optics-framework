@@ -1,16 +1,20 @@
 from dataclasses import dataclass
 
-import numpy as np
 import pytest
 
 from optics_framework.common import ai_self_heal as ash
 from optics_framework.common import test_context
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.ai_self_heal import (
     AISelfHealHandler,
     HealContext,
     HealKeywordSpec,
     HEAL_ACTION_SCHEMA,
 )
+from optics_framework.common.runner.test_runnner import pop_heal
+from tests.units.fakes import Node, Phone, ScriptedModel, phone_keywords
+
+LOGIN = (50, 90)
 
 
 @pytest.fixture(autouse=True)
@@ -133,100 +137,45 @@ class TestPromptContext:
         assert "CURRENT SCREEN row matches" not in llm.last_system
 
 
-from unittest.mock import MagicMock, patch  # noqa: E402
-import tempfile  # noqa: E402
-
-from optics_framework.api.action_keyword import ActionKeyword  # noqa: E402
-from optics_framework.common.optics_builder import OpticsBuilder  # noqa: E402
+SCROLL_DOWN = {"action": "keyword", "keyword": "scroll", "params": ["down"], "completed": False, "reason": "reveal"}
+PRESS_LOGIN = {"action": "keyword", "keyword": "press_element", "params": ["Login"], "completed": True, "reason": "press it"}
 
 
-class _Builder(OpticsBuilder):
-    def __init__(self, *, ai_self_heal, llm):
-        self.mock_driver = MagicMock()
-        self.mock_element_source = MagicMock()
-        self._llm = llm
-        self.session_config = MagicMock()
-        self.session_config.execution_output_path = tempfile.mkdtemp()
-        self.session_config.ai_self_heal = ai_self_heal
-
-    def get_driver(self):
-        return self.mock_driver
-
-    def get_element_source(self):
-        return self.mock_element_source
-
-    def get_text_detection(self):
-        return None
-
-    def get_image_detection(self):
-        return None
-
-    def get_llm(self):
-        return self._llm
-
-    @property
-    def event_sdk(self):
-        return MagicMock()
+def below_the_fold():
+    return Phone([Node("Welcome", (50, 10))], below=[Node("Login", LOGIN)])
 
 
-def _make_action_keyword(*, ai_self_heal, llm):
-    with patch("optics_framework.api.action_keyword.Verifier", MagicMock()):
-        return ActionKeyword(_Builder(ai_self_heal=ai_self_heal, llm=llm))
+class TestPressElement:
+    def test_a_heal_that_scrolls_to_the_element_and_presses_it(self, tmp_path):
+        phone = below_the_fold()
+        phone_keywords(phone, tmp_path, llm=ScriptedModel(SCROLL_DOWN, PRESS_LOGIN)).action_keyword.press_element("Sign in")
+        assert (phone.swipes, phone.taps) == (["down"], [LOGIN])
 
+    def test_a_curation_that_fails_keeps_every_step_of_the_heal(self, tmp_path):
+        model = ScriptedModel(SCROLL_DOWN, PRESS_LOGIN, ConnectionResetError("the curation call dropped"))
+        keywords = phone_keywords(below_the_fold(), tmp_path, llm=model)
+        keywords.action_keyword.press_element("Sign in")
+        assert [step["keyword"] for step in pop_heal(keywords.keyword_map)["suggested_steps"]] == ["scroll", "press_element"]
 
-class TestActionKeywordWiring:
-    def test_active_press_element_heals(self, monkeypatch):
-        monkeypatch.setattr(ash.time, "sleep", lambda *_a, **_k: None)
-        llm = FakeLLM([
-            {"action": "keyword", "keyword": "scroll", "params": ["down"],
-             "completed": False, "reason": "reveal"},
-            {"action": "keyword", "keyword": "press_element", "params": ["Login"],
-             "completed": True, "reason": "press it"},
-        ])
-        llm.instances = [object()]  # InstanceFallback-like truthiness gate
-        ak = _make_action_keyword(ai_self_heal=True, llm=llm)
-        # Mock strategy manager to return valid screenshot bytes and no page source.
-        shot = np.zeros((10, 10, 3), dtype=np.uint8)
-        ak.strategy_manager.capture_screenshot = MagicMock(return_value=shot)
-        ak.strategy_manager.capture_pagesource = MagicMock(return_value=None)
+    def test_an_llm_that_cannot_be_built_leaves_the_step_to_fail_unhealed(self, tmp_path):
+        keywords = phone_keywords(below_the_fold(), tmp_path, llm=ImportError("the gemini extra is not installed"))
+        with pytest.raises(OpticsError) as caught:
+            keywords.action_keyword.press_element("Sign in")
+        assert caught.value.code == Code.E0201
 
-        # scroll is non-locating, so `_heal_execute` calls the real method; let it
-        # run against the mocked `ak.driver` and assert the call reached the driver
-        # with the parsed params (`_heal_dispatch` binds the real method at __init__,
-        # so reassigning `ak.scroll` here would never be consulted — see press_element
-        # below for the correct way to intercept a locating keyword).
-        # press_element runs `_locate_and_act`, which needs a working
-        # strategy_manager.locate; mock it to return a located result.
-        mock_result = MagicMock()
-        mock_result.is_coordinates = False
-        mock_result.value = MagicMock()
-        mock_result.strategy = MagicMock()
-        ak.strategy_manager.locate = MagicMock(return_value=iter([mock_result]))
+    def test_an_llm_config_error_stops_the_session(self, tmp_path):
+        phone, llm = Phone([]), OpticsError(Code.E0501, "credentials_path does not exist")
+        with pytest.raises(OpticsError) as caught:
+            phone_keywords(phone, tmp_path, llm=llm)
+        assert caught.value.code == Code.E0501
 
-        assert ak._ai_self_heal("Login", "press_element", (), shot) is True
-        ak.driver.scroll.assert_called_once_with("down", 1000, event_name=None)
-        # Healed keyword is recorded as a breadcrumb (may appear more than once —
-        # the inner press_element records one, and _log_heal_outcome records another).
-        steps = list(ak._recent_steps)
-        assert any(s == ("press_element", ["Login"]) for s in steps)
-
-    def test_heal_prompt_carries_the_suite_element_name(self):
-        llm = FakeLLM([{"action": "give_up", "reason": "x"}])
-        llm.instances = [object()]
-        ak = _make_action_keyword(ai_self_heal=True, llm=llm)
-        ak.strategy_manager.capture_pagesource = MagicMock(return_value=None)
-        token = test_context.element_names.set({"//*[@content-desc='Chronometer']": "stopwatch_tab"})
+    def test_the_heal_prompt_names_the_suite_element(self, tmp_path):
+        model = ScriptedModel()
+        action = phone_keywords(Phone([]), tmp_path, llm=model).action_keyword
+        named = test_context.element_names.set({"//*[@content-desc='Chronometer']": "stopwatch_tab"})
         try:
-            ak._ai_self_heal("//*[@content-desc='Chronometer']", "press_element", (), np.zeros((10, 10, 3), dtype=np.uint8))
+            with pytest.raises(OpticsError):
+                action.press_element("//*[@content-desc='Chronometer']")
         finally:
-            test_context.element_names.reset(token)
-        assert "TARGET ELEMENT NAME (from the test suite): stopwatch_tab" in llm.last_prompt
-
-
-# ActionKeyword._heal_execute: shlex parsing, dispatch-table lookup, error surfacing.
-#
-# These substitute entries in `_heal_dispatch` directly rather than reassigning
-# `ak.<method>` — `_heal_execute` looks the callable up fresh from `_heal_dispatch` on
-# every call, so that's the correct interception point (see the comment on
-# `test_active_press_element_heals` above for why reassigning the instance attribute
-# doesn't work).
+            test_context.element_names.reset(named)
+        assert "TARGET ELEMENT NAME (from the test suite): stopwatch_tab" in model.prompts[0]

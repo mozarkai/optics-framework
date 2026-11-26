@@ -75,7 +75,7 @@ def emulator():
 def site(emulator):
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(FIXTURE))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     port = server.server_address[1]
     _adb(emulator, "reverse", f"tcp:{port}", f"tcp:{port}")
     yield f"http://localhost:{port}"

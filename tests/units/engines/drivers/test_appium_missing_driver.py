@@ -2,11 +2,12 @@
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import MagicMock
 
 import pytest
 
+from optics_framework.common.config_handler import Config, ConfigHandler
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium import Appium
 
 pytestmark = pytest.mark.black_box
@@ -36,14 +37,14 @@ class _AppiumWithoutXa11y(BaseHTTPRequestHandler):
 @pytest.fixture
 def server_url():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _AppiumWithoutXa11y)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
     server.shutdown()
 
 
 def test_a_server_without_the_driver_is_named_with_its_likely_causes(server_url):
     capabilities = {"platformName": "Mac", "automationName": "Xa11y", "app": "com.apple.calculator"}
-    driver = Appium({"url": server_url, "capabilities": capabilities}, event_sdk=MagicMock())
+    driver = Appium({"url": server_url, "capabilities": capabilities}, event_sdk=EventSDK(ConfigHandler(Config())))
     with pytest.raises(OpticsError) as failure:
         driver.start_session()
     assert failure.value.code == Code.E0102

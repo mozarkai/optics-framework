@@ -1,6 +1,4 @@
 """optics dry_run on a real project folder: which test cases run, in what order, and how a bad selection exits."""
-import subprocess  # nosec B404
-import sys
 import xml.etree.ElementTree as ET  # nosec B405
 
 import pytest
@@ -39,13 +37,14 @@ def project(tmp_path):
     return folder
 
 
-def dry_run(project, *selection, config_selection=""):
-    if config_selection:
-        (project / "config.yaml").write_text(CONFIG + config_selection)
-    return subprocess.run(  # nosec B603
-        [sys.executable, "-m", "optics_framework.helper.cli", "dry_run", str(project), "--no-use-printer", *selection],
-        capture_output=True, text=True, timeout=120,
-    )
+@pytest.fixture
+def dry_run(cli):
+    def run(project, *selection, config_selection=""):
+        if config_selection:
+            (project / "config.yaml").write_text(CONFIG + config_selection)
+        return cli("dry_run", str(project), "--no-use-printer", *selection)
+
+    return run
 
 
 def reported(project):
@@ -58,24 +57,25 @@ def wrapped(*tests):
     return ["Suite Setup", *names, "Suite Teardown"]
 
 
-def test_setup_and_teardown_run_around_every_test(project):
+def test_setup_and_teardown_run_around_every_test(project, dry_run):
     assert dry_run(project).returncode == 0
     assert reported(project) == [(name, "shop_suite") for name in wrapped("Login Test", "Checkout Test", "Refund Check")]
 
 
 @pytest.mark.parametrize("selection, expected", [
-    (["--include", "login TEST"], ["Login Test"]),
-    (["--include", "*test"], ["Login Test", "Checkout Test"]),
-    (["--include", "*test", "--exclude", "Login*"], ["Checkout Test"]),
-    (["--exclude", "Refund ?heck"], ["Login Test", "Checkout Test"]),
-    (["--include", "Login Test", "--include", "Refund Check"], ["Login Test", "Refund Check"]),
+    pytest.param(["--include", "login TEST"], ["Login Test"], id="a name in other case"),
+    pytest.param(["--include", "*test"], ["Login Test", "Checkout Test"], id="a star"),
+    pytest.param(["--include", "*test", "--exclude", "Login*"], ["Checkout Test"], id="include then exclude"),
+    pytest.param(["--exclude", "Refund ?heck"], ["Login Test", "Checkout Test"], id="a question mark"),
+    pytest.param(["--include", "Login Test", "--include", "Refund Check"], ["Login Test", "Refund Check"],
+                 id="the flag twice"),
 ])
-def test_selection_keeps_setup_and_teardown_around_the_selected_tests(project, selection, expected):
+def test_selection_keeps_setup_and_teardown_around_the_selected_tests(project, dry_run, selection, expected):
     assert dry_run(project, *selection).returncode == 0
     assert [name for name, _ in reported(project)] == wrapped(*expected)
 
 
-def test_flags_replace_the_selection_in_config_yaml(project):
+def test_flags_replace_the_selection_in_config_yaml(project, dry_run):
     config_selection = "include:\n  - Refund Check\n"
     assert dry_run(project, config_selection=config_selection).returncode == 0
     assert [name for name, _ in reported(project)] == wrapped("Refund Check")
@@ -84,10 +84,10 @@ def test_flags_replace_the_selection_in_config_yaml(project):
 
 
 @pytest.mark.parametrize("selection, reason", [
-    (["--include", "Logn Test"], "Did you mean 'Login Test'?"),
-    (["--exclude", "*"], "leaves no test cases to run"),
+    pytest.param(["--include", "Logn Test"], "Did you mean 'Login Test'?", id="a misspelt name"),
+    pytest.param(["--exclude", "*"], "leaves no test cases to run", id="every test excluded"),
 ])
-def test_a_bad_selection_exits_3_before_a_session_starts(project, selection, reason):
+def test_a_bad_selection_exits_3_before_a_session_starts(project, dry_run, selection, reason):
     result = dry_run(project, *selection)
     assert result.returncode == 3
     assert "E0702" in result.stderr

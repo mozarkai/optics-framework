@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+import sys
+from types import SimpleNamespace
 
+import pytest
 import yaml
 
 from optics_framework.helper import project_config
-
-
-MODULE = "optics_framework.helper.project_config"
 
 
 def _enabled_names(config: dict, key: str) -> list[str]:
@@ -65,14 +64,10 @@ class TestRenderProjectConfig:
 
 
 class TestPromptProjectConfig:
-
-
-    def test_desktop_question_flow_asks_no_platform_question(self):
-        ask_values = ["Windows", "notepad.exe", "http://10.0.0.5:4723", "INFO"]
-        with patch(f"{MODULE}.Prompt.ask", side_effect=ask_values) as ask, \
-                patch(f"{MODULE}.Confirm.ask", return_value=False):
-            answers = project_config.prompt_project_config(domain="desktop")
-        assert ask.call_args_list[0].kwargs["choices"] == ["Mac", "Linux", "Windows"]
+    def test_desktop_question_flow_asks_no_platform_question(self, typed, capsys):
+        typed("Windows", "notepad.exe", "http://10.0.0.5:4723", "n", "INFO")
+        answers = project_config.prompt_project_config(domain="desktop")
+        assert "What are you automating?" not in capsys.readouterr().out
         assert answers == {
             "platform": "desktop",
             "platform_name": "Windows",
@@ -83,23 +78,22 @@ class TestPromptProjectConfig:
             "log_level": "INFO",
         }
 
-    def test_a_bluetooth_phone_on_usb_reads_its_screen_with_usb_screenshots(self):
-        ask_values = ["bluetooth", "android", "", "1272", "2772", "usb", "INFO"]
-        with patch(f"{MODULE}.Prompt.ask", side_effect=ask_values), \
-                patch(f"{MODULE}.Confirm.ask", return_value=True), \
-                patch(f"{MODULE}._detected_dongle", return_value=""):
-            answers = project_config.prompt_project_config()
-        config = yaml.safe_load(project_config.render_project_config(answers))
+    def test_a_bluetooth_phone_on_usb_reads_its_screen_with_usb_screenshots(self, typed, monkeypatch):
+        monkeypatch.setitem(sys.modules, "airhand", SimpleNamespace(serial_numbers=list))
+        typed("bluetooth", "android", "", "1272", "2772", "usb", "y", "INFO")
+        config = yaml.safe_load(project_config.render_project_config(project_config.prompt_project_config()))
         assert _enabled_names(config, "driver_sources") == ["ble"]
         assert _enabled_names(config, "elements_sources") == ["usb_screenshot"]
+        ble = next(entry["ble"] for entry in config["driver_sources"] if "ble" in entry)
+        assert ble["capabilities"]["frame"] == {"width": 1272, "height": 2772}
 
-    def test_prompted_answers_round_trip_through_renderer(self):
-        ask_values = [
-            "web-selenium", "http://grid.local:4444/wd/hub", "ERROR",
-        ]
-        with patch(f"{MODULE}.Prompt.ask", side_effect=ask_values), \
-                patch(f"{MODULE}.Confirm.ask", return_value=False):
-            answers = project_config.prompt_project_config()
+    @pytest.mark.parametrize(("typed_lines", "platform", "driver", "log_level"), [
+        (("web-selenium", "http://grid.local:4444/wd/hub", "n", "ERROR"), "web-selenium", "selenium", "ERROR"),
+        (("",) * 8, "android", "appium", "INFO"),
+    ], ids=["selenium", "every default"])
+    def test_prompted_answers_round_trip_through_renderer(self, typed, typed_lines, platform, driver, log_level):
+        typed(*typed_lines)
+        answers = project_config.prompt_project_config()
         config = yaml.safe_load(project_config.render_project_config(answers))
-        assert _enabled_names(config, "driver_sources") == ["selenium"]
-        assert config["log_level"] == "ERROR"
+        assert (answers["platform"], _enabled_names(config, "driver_sources")) == (platform, [driver])
+        assert config["log_level"] == log_level

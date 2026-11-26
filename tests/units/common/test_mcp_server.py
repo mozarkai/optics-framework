@@ -5,13 +5,11 @@ import os
 import pathlib
 import threading
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 pytest.importorskip("fastmcp")
 
-from fastapi import HTTPException
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
@@ -21,7 +19,11 @@ from optics_framework.common.logging_config import (
     internal_logger,
     logging_manager,
 )
-from optics_framework.helper import mcp_server
+from optics_framework.helper import feedback, mcp_server
+
+
+async def _no_screenshot():
+    raise AssertionError("the test screen has no screenshot")
 
 
 @pytest.fixture
@@ -31,7 +33,7 @@ def owned(monkeypatch):
     def own(*sids: str) -> None:
         for sid in sids:
             agent = SimpleNamespace(expand_refs=lambda params: params, refs=SimpleNamespace(latest=None))
-            slot = mcp_server._Slot(agent, AsyncMock(), owner="client")
+            slot = mcp_server._Slot(agent, _no_screenshot, owner="client")
             monkeypatch.setitem(mcp_server._STATES, sid, slot)
 
     return own
@@ -51,17 +53,14 @@ def test_readonly_observers_excluded_from_tools():
 def test_http_error_translates_to_tool_error(owned):
     owned("missing")
     server = mcp_server.build_server("full")
-    mock = AsyncMock(side_effect=HTTPException(status_code=404, detail="session not found"))
-    with patch.object(expose_api, "execute_keyword", new=mock):
-        async def go():
-            async with Client(server) as client:
-                await client.call_tool(
-                    "press_element", {"session_id": "missing", "element": "X"}
-                )
 
-        call = go()
-        with pytest.raises(ToolError, match="session not found"):
-            _run(call)
+    async def go():
+        async with Client(server) as client:
+            await client.call_tool("press_element", {"session_id": "missing", "element": "X"})
+
+    call = go()
+    with pytest.raises(ToolError, match="Session not found"):
+        _run(call)
 
 
 def test_decode_screenshot_handles_data_url():
@@ -76,7 +75,7 @@ def test_stdio_logging_never_blocks_on_unread_stderr(monkeypatch):
     read_fd, write_fd = os.pipe()
     handler = logging_manager.internal_console_handler
     monkeypatch.setattr(handler, "console", Console(file=os.fdopen(write_fd, "w")))
-    monkeypatch.setattr(mcp_server, "build_server", MagicMock)
+    monkeypatch.setattr(mcp_server, "build_server", lambda _toolset: SimpleNamespace(run=lambda **_: None))
     original_handlers = list(internal_logger.handlers)
     try:
         mcp_server.run_mcp_server("stdio")
@@ -106,17 +105,12 @@ def test_the_app_argument_names_the_app_of_a_desktop_session():
 
 
 def test_an_unknown_driver_says_how_to_start_a_desktop_app():
-    server = mcp_server.build_server("full")
-    error = HTTPException(status_code=500, detail={
-        "code": "E0601", "message": "Module 'xa11y' not found in package 'optics_framework.engines.drivers'"})
-
     async def go():
-        async with Client(server) as client:
+        async with Client(mcp_server.build_server("full")) as client:
             return await client.call_tool("start_session", {"driver": "xa11y", "app": "Notes"}, raise_on_error=False)
 
-    with patch.object(expose_api, "create_session", new=AsyncMock(side_effect=error)):
-        reply = _run(go())
-
+    reply = _run(go())
+    assert reply.is_error
     assert 'platformName' in reply.content[0].text
 
 
@@ -128,7 +122,7 @@ class _Desktop:
     """A driver whose screen is a list of compact rows; it records each keyword it runs."""
 
     def __init__(self, rows):
-        self.rows, self.ran, self.gate, self.effect = rows, [], None, None
+        self.rows, self.ran, self.ended, self.gate, self.effect = rows, [], [], None, None
 
     async def read(self, _png):
         return [dict(row, extra=dict(row["extra"])) for row in self.rows]
@@ -149,15 +143,18 @@ def _row(text, cls, act=("tap",), area="", hint=""):
 
 
 @pytest.fixture
-def desktop(monkeypatch):
+def desktop(monkeypatch, fake_time):
     from optics_framework.common.agent_core import AgentSession, keyword_catalog
 
     monkeypatch.setattr(mcp_server, "_caller", lambda: "client")
-    monkeypatch.setattr(expose_api, "delete_session", AsyncMock())
     screen = _Desktop([_row("Calendar", "window"), _row("Add Event", "button")])
+
+    async def end(session_id):
+        screen.ended.append(session_id)
+    monkeypatch.setattr(expose_api, "delete_session", end)
     keywords = keyword_catalog(mcp_server._keyword_functions(), coordinates=True)
     agent = AgentSession(screen.read, screen.run, keywords)
-    monkeypatch.setitem(mcp_server._STATES, S1, mcp_server._Slot(agent, AsyncMock(), owner="client"))
+    monkeypatch.setitem(mcp_server._STATES, S1, mcp_server._Slot(agent, _no_screenshot, owner="client"))
     monkeypatch.setitem(expose_api.session_manager.sessions, S1, object())
     return screen
 
@@ -199,6 +196,7 @@ def test_the_steps_of_an_ended_session_stay_readable_by_their_owner(desktop, mon
 
     ended, steps = _run(go())
 
+    assert desktop.ended == [S1]
     assert STEPS in _shown(ended)
     assert [step["keyword"] for step in steps["steps"]] == ["Press Element"]
     assert "Press Element" in steps["modules_csv"]
@@ -224,7 +222,9 @@ def test_rows_with_a_screenshot_give_each_box_in_the_image(desktop, monkeypatch)
     import numpy as np
 
     png = cv2.imencode(".png", np.zeros((40, 60, 3), dtype=np.uint8))[1].tobytes()
-    monkeypatch.setattr(mcp_server._STATES[S1], "shot", AsyncMock(return_value=png))
+    async def shot():
+        return png
+    monkeypatch.setattr(mcp_server._STATES[S1], "shot", shot)
 
     seen, = _calls(("observe", {"screenshot": True}))
 
@@ -288,7 +288,9 @@ def test_a_call_without_a_session_id_after_the_end_names_the_ended_session(deskt
 def test_a_failed_save_keeps_the_reply_and_leaves_no_temp_file(desktop, monkeypatch):
     monkeypatch.setattr(mcp_server, "_caller", lambda: "")
     monkeypatch.setattr(mcp_server._STATES[S1], "owner", "")
-    monkeypatch.setattr(mcp_server.os, "replace", MagicMock(side_effect=OSError("disk full")))
+    def disk_full(*_paths):
+        raise OSError("disk full")
+    monkeypatch.setattr(mcp_server.os, "replace", disk_full)
 
     tapped, = _calls(("tap", {"target": "Add Event"}))
 
@@ -296,31 +298,36 @@ def test_a_failed_save_keeps_the_reply_and_leaves_no_temp_file(desktop, monkeypa
     assert not list((pathlib.Path(os.environ["OPTICS_HOME"]) / "mcp" / "steps").glob("*"))
 
 
-def _tool_names(**env) -> set[str]:
+@pytest.mark.parametrize(("variable", "listed"), [(None, True), ("OPTICS_NO_FEEDBACK", False), ("DO_NOT_TRACK", False)])
+def test_send_feedback_is_a_core_tool_unless_the_user_opts_out(monkeypatch, variable, listed):
+    for opt_out in ("OPTICS_NO_FEEDBACK", "DO_NOT_TRACK"):
+        monkeypatch.delenv(opt_out, raising=False)
+    if variable:
+        monkeypatch.setenv(variable, "1")
+
     async def names():
         async with Client(mcp_server.build_server()) as client:
             return {tool.name for tool in await client.list_tools()}
-    with patch.dict(os.environ, env):
-        return asyncio.run(names())
+    assert ("send_feedback" in asyncio.run(names())) is listed
 
 
-def test_send_feedback_is_a_core_tool_unless_the_user_opts_out():
-    assert "send_feedback" in _tool_names()
-    assert "send_feedback" not in _tool_names(OPTICS_NO_FEEDBACK="1")
-    assert "send_feedback" not in _tool_names(DO_NOT_TRACK="1")
+def test_send_feedback_posts_a_scrubbed_report_and_never_asks_for_a_retry(monkeypatch):
+    posted = []
 
+    def post(url, json, **_):
+        posted.append((url, json))
+        return SimpleNamespace(status_code=429)
+    monkeypatch.setattr(feedback.requests, "post", post)
 
-def test_send_feedback_posts_a_scrubbed_report_and_never_asks_for_a_retry():
     async def send():
         async with Client(mcp_server.build_server()) as client:
             return await client.call_tool("send_feedback", {
                 "kind": "broken", "impact": "blocked", "task": "sign in",
                 "description": "tap did nothing; mail me at dev@example.com",
             })
-    with patch("optics_framework.helper.feedback.requests.post") as post:
-        post.return_value.status_code = 429
-        reply = asyncio.run(send())
-    body = post.call_args.kwargs["json"]
+    reply = asyncio.run(send())
+    (url, body), = posted
+    assert url == "https://optics-framework.org/api/feedback"
     assert body["description"] == "tap did nothing; mail me at [email]"
     assert body["transport"] == "stdio"
     assert "Carry on with your task" in reply.content[0].text

@@ -1,49 +1,34 @@
-from unittest.mock import MagicMock, PropertyMock
-
+"""Enter Text types where the keyboard focus is on iOS, and through 'mobile: type' on Android."""
 import pytest
+from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import NoSuchElementException
 
 from optics_framework.common.error import Code, OpticsError
-from optics_framework.engines.drivers.appium import Appium
+from tests.units.fake_appium import AppiumServer, started_driver
+
+IOS = {"platformName": "iOS", "appium:automationName": "XCUITest", "appium:bundleId": "in.app"}
+FORM = '<hierarchy><f class="XCUIElementTypeTextField" bounds="[0,0][100,40]"/></hierarchy>'
+TYPING = ("send_keys", "mobile: type", "mobile: keys", "press_keycode")
 
 
-def _driver_instance(platform: str, focused=None, focus_error=None) -> Appium:
-    webdriver = MagicMock()
-    webdriver.capabilities = {"platformName": platform}
-    webdriver.find_elements.return_value = []
-    active = PropertyMock(side_effect=focus_error) if focus_error else PropertyMock(return_value=focused)
-    type(webdriver.switch_to).active_element = active
-    instance = Appium.__new__(Appium)
-    instance.driver = webdriver
-    instance.capabilities = {}
-    instance.event_sdk = MagicMock()
-    return instance
+def test_ios_types_into_the_focused_field(monkeypatch):
+    server = AppiumServer(page=FORM)
+    server.answers["active_element"] = server.nodes(AppiumBy.XPATH, "//f")[0]
+    started_driver(monkeypatch, server, IOS).enter_text("hello")
+    assert server.commands(*TYPING) == [("send_keys", "[0,0][100,40]", "hello")]
 
 
-class TestIosEnterText:
-    def test_types_into_the_focused_element(self):
-        focused = MagicMock()
-        instance = _driver_instance("iOS", focused=focused)
-
-        instance.enter_text("hello")
-
-        focused.send_keys.assert_called_once_with("hello")
-        instance.driver.execute_script.assert_not_called()
-
-    def test_keyboard_keyword_fails_too_when_nothing_is_focused(self):
-        instance = _driver_instance("iOS", focus_error=NoSuchElementException("No element is currently focused"))
-
-        with pytest.raises(OpticsError) as raised:
-            instance.enter_text_using_keyboard("hello")
-
-        assert raised.value.code == Code.E0401
-        instance.driver.execute_script.assert_not_called()
+def test_ios_keyboard_typing_fails_when_nothing_has_focus(monkeypatch):
+    server = AppiumServer({"active_element": NoSuchElementException("No element is currently focused")}, page=FORM)
+    driver = started_driver(monkeypatch, server, IOS)
+    with pytest.raises(OpticsError) as caught:
+        driver.enter_text_using_keyboard("hello")
+    assert caught.value.code == Code.E0401
+    assert server.commands(*TYPING) == []
 
 
-class TestAndroidEnterTextUnchanged:
-    def test_android_still_uses_mobile_type(self):
-        instance = _driver_instance("Android")
-
-        instance.enter_text("hello")
-
-        instance.driver.execute_script.assert_called_once_with("mobile: type", {"text": "hello"})
+def test_android_types_through_mobile_type(monkeypatch):
+    server = AppiumServer()
+    started_driver(monkeypatch, server, {"platformName": "Android", "appium:automationName": "UiAutomator2",
+                                  "appium:appPackage": "in.app"}).enter_text("hello")
+    assert server.commands(*TYPING) == [("mobile: type", {"text": "hello"})]

@@ -1,9 +1,8 @@
 """Concurrency contracts for the ``optics serve`` keyword executor."""
 import asyncio
 import threading
-from unittest.mock import AsyncMock
 
-
+from optics_framework.common.events import EventManager
 from optics_framework.common.execution import KeywordExecutor
 
 
@@ -42,12 +41,12 @@ def test_keyword_execution_uses_a_thread_and_serializes_per_session():
         keyword = _BlockingKeyword()
         runner = _Runner({"block": keyword.block})
         first = asyncio.create_task(
-            KeywordExecutor("block", ["first"], AsyncMock()).execute(session, runner)
+            KeywordExecutor("block", ["first"], EventManager()).execute(session, runner)
         )
 
         await asyncio.wait_for(asyncio.to_thread(keyword.first_started.wait), timeout=0.5)
         second = asyncio.create_task(
-            KeywordExecutor("block", ["second"], AsyncMock()).execute(session, runner)
+            KeywordExecutor("block", ["second"], EventManager()).execute(session, runner)
         )
         done, _ = await asyncio.wait({second}, timeout=0.05)
 

@@ -144,9 +144,10 @@ class PopupGuard:
         run: Callable[[], PopupRun],
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ):
         self._rules, self._io, self._run = rules, io, run
-        self._sleep, self._clock = sleep, clock
+        self._sleep, self._clock, self._now = sleep, clock, now
         self._step: dict = {}
         self._step_counts: Counter = Counter()
         self._screen: Optional[PopupScreen] = None
@@ -370,5 +371,5 @@ class PopupGuard:
             popup_kind=screen.kind() if verdict != Verdict.NONE else None,
             popup_text=fields.pop("popup_text", None) or (screen.popup_text() if verdict != Verdict.NONE else None),
             popup_title=screen.popup_title() if verdict != Verdict.NONE else None,
-            verdict=verdict, timestamp=datetime.now(timezone.utc).isoformat(timespec="milliseconds"), **fields,
+            verdict=verdict, timestamp=self._now().isoformat(timespec="milliseconds"), **fields,
         ).model_dump())

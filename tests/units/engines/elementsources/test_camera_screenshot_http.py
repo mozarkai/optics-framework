@@ -86,7 +86,7 @@ def http_server():
     server.body = JPEG
     server.received = received
     server.url = f"http://127.0.0.1:{server.server_port}/screenshot"
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
     yield server
     server.shutdown()
