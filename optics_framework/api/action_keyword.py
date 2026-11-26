@@ -630,7 +630,7 @@ class ActionKeyword:
             # appending after a bare `return` would be unreachable).
             self._record_successful_step(func_name, element, intent_args, value)
             return ret
-        if locate_error is not None and locate_error.code == Code.E0305:
+        if locate_error is not None and locate_error.code in (Code.E0305, Code.E0106):
             raise locate_error
         if result_count == 0:
             self._popup_before_self_heal()
