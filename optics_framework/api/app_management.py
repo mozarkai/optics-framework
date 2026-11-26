@@ -1,5 +1,5 @@
 from typing import Optional
-from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.instance_fallback import InstanceFallback
 from optics_framework.common.caller_policy import refuse_local_resource
 from optics_framework.common.logging_config import internal_logger
 from optics_framework.common.optics_builder import OpticsBuilder

@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional, Type, TypeVar, Any
 from pydantic import BaseModel
-from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.instance_fallback import InstanceFallback
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.image_interface import ImageInterface

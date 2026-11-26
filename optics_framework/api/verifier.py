@@ -4,7 +4,7 @@ from typing import Callable, Optional, Any, List, Tuple
 from optics_framework.common.error import ElementNotFound, OpticsError, Code, is_element_not_found
 from optics_framework.common.logging_config import SENSITIVE_PREFIX, internal_logger, mask_secrets
 from optics_framework.common import utils
-from optics_framework.common.base_factory import InstanceFallback
+from optics_framework.common.instance_fallback import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.popup_guard import STOPS as POPUP_STOPS
 from optics_framework.common.runner.step_params import resolve_scalar_param
