@@ -300,6 +300,8 @@ def test_a_failed_save_keeps_the_reply_and_leaves_no_temp_file(desktop, monkeypa
 
 @pytest.mark.parametrize(("variable", "listed"), [(None, True), ("OPTICS_NO_FEEDBACK", False), ("DO_NOT_TRACK", False)])
 def test_send_feedback_is_a_core_tool_unless_the_user_opts_out(monkeypatch, variable, listed):
+    for opt_out in ("OPTICS_NO_FEEDBACK", "DO_NOT_TRACK"):
+        monkeypatch.delenv(opt_out, raising=False)
     if variable:
         monkeypatch.setenv(variable, "1")
 
