@@ -307,7 +307,7 @@ class UIHelper:
                         )
                         # Replace the exact match in the XPath with the partial match conditions
                         for quote in "\"'":
-                            xpath = xpath.replace(f"@{attribute}={quote}{attr_value}{quote}", conditions)
+                            xpath = xpath.replace(f"@{attribute}={quote}{attr_value}{quote}", f"({conditions})")
 
         return xpath
 
