@@ -780,7 +780,9 @@ class Appium(DriverInterface):
             capabilities = value.get(self.RESPONSE_CAPABILITIES, value)
             if not isinstance(capabilities, dict):
                 return
-            capabilities = {**(self.capabilities or {}), **capabilities}
+            live = {name.removeprefix("appium:") for name in capabilities}
+            configured = {k: v for k, v in (self.capabilities or {}).items() if k.removeprefix("appium:") not in live}
+            capabilities = {**configured, **capabilities}
             if hasattr(driver, "caps"):
                 driver.caps = capabilities
             if hasattr(driver, "capabilities"):

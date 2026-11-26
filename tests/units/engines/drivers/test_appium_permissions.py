@@ -63,6 +63,8 @@ def test_on_ios_permissions_set_nothing_and_say_where_the_prompt_rule_goes(monke
 @pytest.mark.parametrize("configured, running", [
     pytest.param({}, {"platformName": "Android", "appPackage": "in.app"}, id="only a session id"),
     pytest.param({"appium:appPackage": "in.app"}, {"platformName": "Android"}, id="a package the session does not report"),
+    pytest.param({"appPackage": "old.app"}, {"platformName": "Android", "appium:appPackage": "in.app"},
+                 id="a package the session reports under its other name"),
 ])
 def test_attaching_sets_the_permissions_of_the_running_app(monkeypatch, configured, running):
     server = AppiumServer({"getSession": {"value": {"capabilities": running}}}, device=running)
