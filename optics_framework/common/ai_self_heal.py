@@ -16,18 +16,17 @@ unit-testable with fakes.
 """
 
 import re
-import shlex
 import time
 from dataclasses import dataclass, field, replace
 from itertools import pairwise
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from optics_framework.common import screen_snapshot
-from optics_framework.common.agent_core import NON_VERIFYING_KEYWORDS, TYPED_VALUE_PARAMS
+from optics_framework.common.agent_core import NON_VERIFYING_KEYWORDS, TYPED_VALUE_PARAMS, keyword_line
 from optics_framework.common.error import OpticsError
 from optics_framework.common.llm_interface import LLMInterface
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.common.step_curation import curate_steps
+from optics_framework.common.step_curation import curate_steps, curation_prompt
 
 # Provider callables (best-effort; may return None when unavailable).
 ScreenshotProvider = Callable[[], Optional[bytes]]
@@ -342,7 +341,7 @@ class AISelfHealHandler:
         except Exception as exc:  # noqa: BLE001 - a keyword error ends the heal cleanly
             return HealResult(False, action=action, message=f"Keyword failed: {exc}")
 
-        line = self._build_line(action.keyword, action.params)
+        line = keyword_line(action.keyword, action.params)
         attempted.append(line)
         heal_log.append(f"{line} -> {'PASS' if outcome.ok else 'FAIL'}")
         if outcome.ok:
@@ -393,7 +392,7 @@ class AISelfHealHandler:
         try:
             action = self._bound(action, ctx, refs, catalog)
         except screen_snapshot.TargetError as exc:
-            line = self._build_line(action.keyword, [action.target, *action.params] if action.target else action.params)
+            line = keyword_line(action.keyword, [action.target, *action.params] if action.target else action.params)
             attempted.append(line)
             heal_log.append(f"{line} -> FAIL: {exc}")
             return None
@@ -455,35 +454,14 @@ class AISelfHealHandler:
         """
         if not result.ok or not self.curate or len(succeeded) <= 1:
             return list(succeeded)
-        prompt = self._build_curation_prompt(ctx, succeeded)
+        prompt = curation_prompt(
+            f"INSTRUCTION (goal that was achieved by self-heal): {ctx.intent()}",
+            ((True, f"{keyword} {params}") for keyword, params in succeeded),
+        )
         indices = curate_steps(self.llm, prompt, len(succeeded))
         if indices is None:
             return list(succeeded)
         return [succeeded[i] for i in indices]
-
-    @staticmethod
-    def _build_curation_prompt(
-        ctx: HealContext, succeeded: List[Tuple[str, List[str]]],
-    ) -> str:
-        """Text-only curation prompt. Candidate steps are the passed heal steps, 1-based.
-
-        The goal is the original keyword the normal locators failed on; only the
-        successful steps are selectable, so no FAILED context section is needed here.
-        """
-        lines = [
-            f"INSTRUCTION (goal that was achieved by self-heal): {ctx.intent()}",
-            "",
-            "CANDIDATE STEPS (selectable — put these numbers in `keep`):",
-        ]
-        for idx, (kw, kw_params) in enumerate(succeeded, 1):
-            lines.append(f"  {idx}. {kw} {kw_params}")
-        lines.append("")
-        lines.append(
-            "Return `keep` = the 1-based CANDIDATE numbers to run, in any order, that reproduce "
-            "the goal. Drop dead-ends, backtracks, overshoot-then-correct, and no-op steps. When "
-            "unsure, KEEP."
-        )
-        return "\n".join(lines)
 
     # -- internals -------------------------------------------------------------
 
@@ -537,9 +515,9 @@ class AISelfHealHandler:
         if not action.keyword:
             return _DispatchOutcome(ok=False, done=False)
 
-        line = self._build_line(action.keyword, action.params)
+        line = keyword_line(action.keyword, action.params)
         typed = [action.params[0], str(ctx.value), *action.params[2:]] if ctx.types_value(action) else action.params
-        result = self.keyword_executor(self._build_line(action.keyword, typed))
+        result = self.keyword_executor(keyword_line(action.keyword, typed))
 
         if not result.ok:
             internal_logger.debug("AI self-heal: keyword '%s' failed: %s", line, result.message)
@@ -584,13 +562,6 @@ class AISelfHealHandler:
             completed=completed,
             target=str(raw.get("target") or ""),
         )
-
-    @staticmethod
-    def _build_line(keyword: str, params: List[str]) -> str:
-        """Build a keyword line string from keyword name and params."""
-        if not params:
-            return keyword
-        return keyword + " " + " ".join(shlex.quote(p) for p in params)
 
     def _build_prompt(
         self, ctx: HealContext, page_source: Optional[str],

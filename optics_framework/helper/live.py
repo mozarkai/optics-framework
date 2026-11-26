@@ -39,6 +39,7 @@ from optics_framework.common.agent_core import (
     Focus,
     Value,
     bind,
+    keyword_line,
     mask_typed_secret,
     runner_params,
     secret_element,
@@ -1249,7 +1250,7 @@ class LiveController:
         else:
             message = step.observation
         return ActionResult(
-            raw=NaturalLanguageAgent._build_line(step.keyword, step.params),
+            raw=keyword_line(step.keyword, step.params),
             keyword=step.keyword,
             params=step.params,
             status=ActionStatus.PASS if ok else ActionStatus.FAIL,

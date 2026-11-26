@@ -1,7 +1,6 @@
 """Natural-language agent: reach a goal one verified action at a time."""
 
 import asyncio
-import shlex
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import KW_ONLY, dataclass, field
@@ -21,7 +20,7 @@ from optics_framework.common.agent_core import (
     attempt_key,
     keyword_catalog,
     prepare,
-    visible_params,
+    signature_line,
 )
 from optics_framework.common.error import OpticsError
 from optics_framework.common.llm_interface import LLMInterface
@@ -36,7 +35,7 @@ from optics_framework.common.screen_snapshot import (
     hide,
     prompt_rows,
 )
-from optics_framework.common.step_curation import curate_steps
+from optics_framework.common.step_curation import curate_steps, curation_prompt
 
 Vision = Literal["auto", "always", "never"]
 
@@ -282,10 +281,7 @@ class NaturalLanguageAgent:
     @staticmethod
     def _system_prompt(catalog: Mapping[str, Callable[..., Any]], elements: Mapping[str, Any]) -> str:
         """The run's system prompt: the static rules, the keyword catalog and the named elements."""
-        extra = [
-            " ".join([name, *(f"<{p.name}>" if p.default is p.empty else f"[{p.name}]" for p in visible_params(fn))])
-            for name, fn in sorted(catalog.items()) if name not in _VERB_KEYWORDS
-        ]
+        extra = [signature_line(name, fn) for name, fn in sorted(catalog.items()) if name not in _VERB_KEYWORDS]
         lines = [SYSTEM_PROMPT, "KEYWORD CATALOG (action keyword; name and params):"]
         lines += [f"  {sig}" for sig in extra or ["(none)"]]
         if elements:
@@ -523,10 +519,6 @@ class NaturalLanguageAgent:
         recorder = state.session.recorder
         return AgentResult(status, state.turns, message, recorder.steps, recorder.elements, recorder.secrets)
 
-    @staticmethod
-    def _build_line(keyword: str, params: list[str]) -> str:
-        return " ".join([keyword, *(shlex.quote(p) for p in params)])
-
     def _prompt(
         self, instruction: str, number: int, state: _RunState, snap: Snapshot | None, source: str | None, notes: list[str],
     ) -> str:
@@ -595,21 +587,13 @@ class NaturalLanguageAgent:
     def _curate(self, instruction: str, state: _RunState) -> str:
         """Keep the successful steps the LLM picks, numbered per agent step; "" keeps every step."""
         turns = {id(t.ran): t for t in state.turns if t.ran is not None}
-        lines = [f"INSTRUCTION (goal that was achieved): {instruction}", ""]
-        lines.append("CANDIDATE STEPS (selectable — put these numbers in `keep`):")
-        numbers: list[int] = []
-        for n, ran in enumerate(state.session.steps, 1):
-            turn = turns[id(ran)]
-            if ran.ok:
-                numbers.append(n)
-                lines.append(f"  {len(numbers)}. {self._describe(turn)}  | {turn.thought[:160]}")
-            else:
-                lines.append(f"  - [FAILED, not selectable] {self._describe(turn)} -> {turn.observation}")
-        lines += ["", (
-            "Return `keep` = the 1-based CANDIDATE numbers to run, in any order, that reproduce the goal. Drop "
-            "dead-ends, backtracks, overshoot-then-correct, and no-op steps. When unsure, KEEP."
-        )]
-        kept = curate_steps(self.llm, "\n".join(lines), len(numbers))
+        steps = [(ran.ok, turns[id(ran)]) for ran in state.session.steps]
+        numbers = [n for n, (ok, _) in enumerate(steps, 1) if ok]
+        prompt = curation_prompt(f"INSTRUCTION (goal that was achieved): {instruction}", (
+            (ok, self._describe(turn) + (f"  | {turn.thought[:160]}" if ok else f" -> {turn.observation}"))
+            for ok, turn in steps
+        ))
+        kept = curate_steps(self.llm, prompt, len(numbers))
         if kept is None:
             return ""
         state.session.recorder.keep({numbers[i] for i in kept})

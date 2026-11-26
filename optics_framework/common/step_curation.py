@@ -6,13 +6,11 @@ keyword at a time and finish with an ordered list of *successful* steps that may
 still contain dead-ends, backtracks, overshoot-then-correct gestures, or no-ops.
 This module asks the LLM for the minimal ordered subset that reproduces the goal.
 
-The two loops are documented as siblings that must be kept in sync (see CLAUDE.md);
-sharing the schema, system prompt, and index-coercion here keeps their curation
-identical. Each caller still builds its own user prompt, because the candidate/failed
-step context differs between them.
+The schema, the system prompt, the user prompt's frame and the index coercion are here, so
+both loops curate the same way. Each caller gives only its goal line and its step texts.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from optics_framework.common.error import OpticsError
 from optics_framework.common.llm_interface import LLMInterface
@@ -54,11 +52,28 @@ worse than a slightly long one. If every step contributed, keep them all.
 """
 
 
+_CANDIDATES = "CANDIDATE STEPS (selectable — put these numbers in `keep`):"
+_KEEP = (
+    "Return `keep` = the 1-based CANDIDATE numbers to run, in any order, that reproduce the goal. Drop "
+    "dead-ends, backtracks, overshoot-then-correct, and no-op steps. When unsure, KEEP."
+)
+
+
+def curation_prompt(goal: str, steps: Iterable[Tuple[bool, str]]) -> str:
+    """The user prompt for ``curate_steps``: ``goal`` is the line that says what was achieved, and each step is
+    ``(passed, text)``. A passed step gets the next number the model may keep; a failed one is context only."""
+    lines, number = [goal, "", _CANDIDATES], 0
+    for passed, text in steps:
+        number += passed
+        lines.append(f"  {number}. {text}" if passed else f"  - [FAILED, not selectable] {text}")
+    return "\n".join([*lines, "", _KEEP])
+
+
 def curate_steps(llm: LLMInterface, prompt: str, step_count: int) -> Optional[List[int]]:
     """Ask the LLM which of ``step_count`` candidate steps to keep.
 
-    ``prompt`` is the caller-built user prompt; it must number the selectable candidate
-    steps 1..``step_count`` (see each caller's prompt builder). Returns the kept indices
+    ``prompt`` comes from :func:`curation_prompt`, which numbers the selectable candidate
+    steps 1..``step_count``. Returns the kept indices
     as **0-based, deduplicated, sorted** integers, or ``None`` to mean "keep all".
 
     Every abnormal outcome returns ``None`` so a working recording is never lost:
