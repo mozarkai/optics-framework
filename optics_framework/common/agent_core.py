@@ -20,7 +20,7 @@ from optics_framework.common.logging_config import (
     is_secret_name,
     register_config_secret,
 )
-from optics_framework.common.runner.data_reader import DataReader
+from optics_framework.common.runner.step_params import split_params_by_signature
 from optics_framework.common.screen_snapshot import (
     REDACTED,
     REF_RE,
@@ -325,7 +325,7 @@ def _given_by_name(
 
 
 def _given_by_position(fn: Callable[..., Any], tokens: list[str], free: list[inspect.Parameter]) -> dict[str, Value]:
-    positional, keywords = DataReader.split_params_by_signature(fn, tokens)
+    positional, keywords = split_params_by_signature(fn, tokens)
     if len(positional) > len(free):
         raise ValueError(f"Too many params for {fn.__name__}")
     try:
@@ -370,7 +370,7 @@ def runner_params(fn: Callable[..., Any] | None, values: Mapping[str, Any]) -> l
             continue
         token = str(values[name])
         if not named:
-            positional, _ = DataReader.split_params_by_signature(fn, [*out, token])
+            positional, _ = split_params_by_signature(fn, [*out, token])
             named = len(positional) != len(out) + 1
         out.append(f"{name}={token}" if named else token)
     return out + [f"{name}={value}" for name, value in values.items() if name not in names]

@@ -1,8 +1,7 @@
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from optics_framework.common import utils
 from optics_framework.common.popup_guard import PopupRun
 
 current_test_case: ContextVar[str] = ContextVar("current_test_case", default=None)
@@ -20,12 +19,3 @@ def case_scope(test_case: str, popup: PopupRun) -> Iterator[None]:
     finally:
         popup_run.reset(record)
         current_test_case.reset(case)
-
-
-def name_locators(params: Iterable[str], locators: Callable[[str], list[str] | None]) -> None:
-    """Record, for the keyword about to run, the element name each locator of its ``${name}`` params comes from; the first name wins."""
-    names: dict[str, str] = {}
-    for name in filter(None, map(utils.whole_var_name, params)):
-        for value in locators(name) or []:
-            names.setdefault(value, name)
-    element_names.set(names)

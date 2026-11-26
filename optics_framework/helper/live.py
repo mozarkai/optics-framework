@@ -57,9 +57,8 @@ from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
     DataReader,
-    step_arguments,
-    step_candidates,
 )
+from optics_framework.common.runner.step_params import step_arguments, step_candidates
 from optics_framework.common.utils import escape_csv_value
 from optics_framework.common.nl_agent import (
     NaturalLanguageAgent,
