@@ -18,11 +18,9 @@ from urllib.parse import urlsplit
 import inspect
 from skimage.metrics import structural_similarity as ssim
 from optics_framework.common.logging_config import (
-    SENSITIVE_PREFIX, internal_logger, execution_logger, register_secret, holding_logs_for_secret, mask_secrets,
-    register_marked_secret,
+    SENSITIVE_PREFIX, internal_logger, execution_logger, register_marked_secret,
 )
-from optics_framework.common.error import OpticsError, Code, undefined_element
-from optics_framework.common.models import ElementData
+from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.session_liveness import raise_if_session_dead
 
 OUTPUT_PATH_NOT_SET_MSG = "output_dir is required. Pass it from the session's execution_output_path."
@@ -98,66 +96,11 @@ def whole_var_name(param: Any) -> str | None:
     return ref.name.strip() if ref and ref.start == 0 and ref.end == len(text) else None
 
 
-def resolve_scalar_param(session: Any, param: str) -> str:
-    """
-    Resolve a `${name}` reference from `session.elements`, returning its first value as a string.
-
-    Only resolves when the *entire* param is exactly one `${name}` reference (anchored match) —
-    a param that embeds `${var}` inside a larger expression (e.g. `${a} + ${b}`) is left
-    untouched, since that's for the keyword itself to substitute (see `Evaluate`/`Condition`).
-    Non-matching input is returned unchanged (stripped).
-    """
-    if not isinstance(param, str):
-        param = str(param)
-    param = param.strip()
-    var_name = whole_var_name(param)
-    if var_name is None:
-        return param
-    elements = getattr(session, "elements", None)
-    if not isinstance(elements, ElementData):
-        raise OpticsError(Code.E0702, message=f"Cannot resolve '{param}': no element data in session.")
-    value = elements.get_element(var_name)
-    if value is None:
-        raise undefined_element(var_name)
-    if not value:
-        raise OpticsError(Code.E0201, message=f"{param} has no value in the project's elements")
-    return str(value[0])
-
-
 STORE_AS_PATTERN = re.compile(r"^\s*store_as\s*=\s*(.*)$", re.DOTALL)
 
 
 def raw_param_indices(method: Any) -> set[int]:
     return set(getattr(method, "_raw_param_indices", ()))
-
-
-def _inline_targets(method: Any, params: list) -> set[int]:
-    if getattr(method, "_substitutes_own_vars", False):
-        return set()
-    raw = raw_param_indices(method)
-    return {i for i, p in enumerate(params) if i not in raw and isinstance(p, str) and "${" in p}
-
-
-def substitute_inline(method: Any, params: list, elements: ElementData) -> list:
-    """A whole-param ${name} is left for the fallback expansion; an unknown name fails the step."""
-    def substitute(param: str) -> str:
-        def value(ref: VarRef) -> str:
-            written = f"${{{ref.name}}}"
-            if ref.escaped:
-                return written
-            values = elements.get_element(ref.name.strip())
-            if not values:
-                raise OpticsError(Code.E0403, message=f"Variable '{written}' in '{param}' is not defined.")
-            return str(values[0])
-        return substitute_vars(param, value)
-
-    targets = _inline_targets(method, params)
-    return [substitute(p) if i in targets and whole_var_name(p) is None else p for i, p in enumerate(params)]
-
-
-def unescape_vars(method: Any, params: list) -> list:
-    targets = _inline_targets(method, params)
-    return [p.replace("$${", "${") if i in targets else p for i, p in enumerate(params)]
 
 
 def split_store_as(params: list) -> tuple[list, str | None]:
@@ -174,26 +117,6 @@ def split_store_as(params: list) -> tuple[list, str | None]:
 def require_store_name(name: str) -> None:
     if not name:
         raise OpticsError(Code.E0403, message="store_as needs a name, e.g. store_as=balance.")
-
-
-def store_result(elements: ElementData, name: str, result: Any) -> str:
-    require_store_name(name)
-    if result is None:
-        raise OpticsError(Code.E0403, message=f"Cannot store '{name}': the keyword returned no value.")
-    value = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
-    register_secret(elements.secrets, name, value)
-    elements.store(name, value)
-    return value
-
-
-
-def call_and_store(elements: ElementData, method: Callable, args: list, kwargs: dict, store_as: str | None) -> tuple[Any, dict[str, str]]:
-    """Returns the keyword's result and, masked for reports, what store_as kept."""
-    with holding_logs_for_secret(store_as):
-        returned = method(*args, **kwargs)
-        if store_as is None:
-            return returned, {}
-        return returned, {store_as: mask_secrets(store_result(elements, store_as, returned))}
 
 
 # (start x, start y, end x, end y) as fractions of the screen; "down" brings later content into view.

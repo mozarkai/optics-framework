@@ -20,7 +20,9 @@ from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.caller_policy import refuse_server_read
 from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common import expression, fallback, utils
-from optics_framework.common.runner.data_reader import bind_params, step_arguments, step_candidates
+from optics_framework.common.runner.step_params import (
+    bind_params, call_and_store, resolve_scalar_param, step_arguments, step_candidates,
+)
 
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
@@ -162,7 +164,7 @@ class FlowControl:
         """Resolve ${variable} references from session.elements, always returning a scalar (first value if list)."""
         if self.session is None:
             raise OpticsError(Code.E0702, message="Session is None in resolve_param.")
-        return utils.resolve_scalar_param(self.session, param)
+        return resolve_scalar_param(self.session, param)
 
     def _get_validated_module_def(self, module_name: str) -> List[Tuple[str, List]]:
         """Validate session and modules, return the module definition or raise."""
@@ -203,7 +205,7 @@ class FlowControl:
             positional, named = step_arguments(method, combo, elements)
             bind_params(keyword, method, positional, named)
             execution_logger.info(f"Executing {keyword} with params: {positional} {named or ''}".rstrip())
-            return utils.call_and_store(elements, method, positional, named, store_as)[0]
+            return call_and_store(elements, method, positional, named, store_as)[0]
 
         return fallback.run(step_candidates(method, params, elements), attempt, f"keyword '{keyword}'")
 

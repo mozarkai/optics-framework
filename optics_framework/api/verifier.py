@@ -7,6 +7,7 @@ from optics_framework.common import utils
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.popup_guard import STOPS as POPUP_STOPS
+from optics_framework.common.runner.step_params import resolve_scalar_param
 from optics_framework.common.strategies import LocateResult, StrategyManager, checked_rule
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.session_liveness import raise_if_session_dead
@@ -210,7 +211,7 @@ class Verifier:
 
     def _resolve_param(self, param: str) -> str:
         """Resolve a `${variable}` reference from session elements, returning its first value."""
-        return utils.resolve_scalar_param(self.session, param)
+        return resolve_scalar_param(self.session, param)
 
     def assert_equality(self, output: Any, expression: Any, event_name: Optional[str] = None) -> bool:
         """

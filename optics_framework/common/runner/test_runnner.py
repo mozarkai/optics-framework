@@ -51,7 +51,9 @@ from optics_framework.common.events import (
     Event,
     redact_event,
 )
-from optics_framework.common.runner.data_reader import bind_params, step_arguments, step_candidates
+from optics_framework.common.runner.step_params import (
+    bind_params, call_and_store, step_arguments, step_candidates, substitute_inline,
+)
 from optics_framework.common.popup_guard import PopupRun, Verdict
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.common import fallback, utils
@@ -596,7 +598,7 @@ class TestRunner(Runner):
         def attempt(candidate_args):
             positional, keywords = step_arguments(method, candidate_args, self.elements)
             bind_params(keyword_node.name, method, positional, keywords)
-            return utils.call_and_store(self.elements, method, positional, keywords, store_as)[1]
+            return call_and_store(self.elements, method, positional, keywords, store_as)[1]
 
         pop_heal(self.keyword_map)
         try:
@@ -1008,7 +1010,7 @@ class TestRunner(Runner):
         """Resolve a keyword's params without running it; raise what a run would fail on before acting."""
         written, store_as = utils.split_store_as(keyword_node.params)
         method = self.keyword_map.get("_".join(keyword_node.name.split()).lower())
-        params = utils.substitute_inline(method, written, self.elements)
+        params = substitute_inline(method, written, self.elements)
         raw = utils.raw_param_indices(method)
         resolved_params = [param if i in raw else self.resolve_param(param) for i, param in enumerate(params)]
         # Nothing runs here, so define the names a run would set.
@@ -1320,7 +1322,7 @@ class PytestRunner(Runner):
         def attempt(candidate_args):
             positional, keywords = step_arguments(method, candidate_args, self.elements)
             bind_params(keyword, method, positional, keywords)
-            return utils.call_and_store(self.elements, method, positional, keywords, store_as)[1]
+            return call_and_store(self.elements, method, positional, keywords, store_as)[1]
 
         try:
             stored = fallback.run(param_candidates, attempt, f"keyword '{keyword}'")
