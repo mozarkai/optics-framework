@@ -15,18 +15,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from optics_framework.common.optics_home import optics_home
 from optics_framework.helper.version import VERSION
 
 _console = Console()
 _CMD_STYLE = "cyan bold"
-
-
-def optics_home() -> str:
-    """The per-user optics folder: ``OPTICS_HOME`` (for a read-only HOME, containers or CI), else ``~/.optics``."""
-    override = os.environ.get("OPTICS_HOME")
-    if override:
-        return os.path.expanduser(override)
-    return os.path.join(os.path.expanduser("~"), ".optics")
 
 
 def _marker_path() -> str:

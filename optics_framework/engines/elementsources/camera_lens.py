@@ -7,7 +7,7 @@ import sys
 from typing import Callable, Protocol
 
 from optics_framework.common.logging_config import internal_logger
-from optics_framework.helper.onboarding import optics_home
+from optics_framework.common.optics_home import optics_home
 
 # A value at least this many times the median sharpness of the sweep is a focus peak, not noise.
 PEAK_RATIO = 3.0
