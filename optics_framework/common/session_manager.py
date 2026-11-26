@@ -52,6 +52,17 @@ def _maybe_setup_junit(
     setup_junit(session_id, config)
 
 
+def _release(session_id: str, session_dir: Optional[str]) -> None:
+    """Drop what a session holds outside itself: its JUnit handler, its temp folder and its event manager."""
+    cleanup_junit(session_id)
+    if session_dir:
+        try:
+            shutil.rmtree(session_dir)
+        except OSError as e:
+            internal_logger.warning("Failed to remove session directory %s: %s", session_dir, e)
+    get_event_manager_registry().remove_session(session_id)
+
+
 class SessionHandler(ABC):
     """Abstract interface for session management."""
     @abstractmethod
@@ -110,6 +121,19 @@ class Session:
                  error_definitions: Optional[ErrorDefinitions] = None):
         self.session_id = session_id
         self._session_dir: str = tempfile.mkdtemp(prefix="optics_session_")
+        try:
+            self._open(config, test_cases, modules, elements, apis, templates, error_definitions)
+        except BaseException:
+            _release(session_id, self._session_dir)
+            raise
+
+    def _open(self, config: Config,
+              test_cases: Optional[TestCaseNode],
+              modules: Optional[ModuleData],
+              elements: Optional[ElementData],
+              apis: Optional[ApiData],
+              templates: Optional[TemplateData],
+              error_definitions: Optional[ErrorDefinitions]) -> None:
         if config.remote_caller:
             # A remote caller must not choose where the server writes, so its outputs die with the session.
             config.execution_output_path = os.path.join(self._session_dir, "output")
@@ -181,14 +205,7 @@ class SessionManager(SessionHandler):
                 except Exception as e:
                     internal_logger.warning("Failed to terminate driver %s: %s", driver, e)
             session.inline_templates.clear()
-        cleanup_junit(session_id)
-        base_dir = getattr(session, "_session_dir", None)
-        if base_dir:
-            try:
-                shutil.rmtree(base_dir)
-            except OSError as e:
-                internal_logger.warning("Failed to remove session directory %s: %s", base_dir, e)
-        get_event_manager_registry().remove_session(session_id)
+        _release(session_id, getattr(session, "_session_dir", None))
 
     def terminate_all(self) -> None:
         """Terminates every session; one session failing to close does not spare the rest."""
