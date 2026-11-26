@@ -21,13 +21,13 @@ def expect_failure(check, code, message):
 
 
 class TestAssertVisibility:
-    @pytest.mark.parametrize("fail", [True, "false"])
-    def test_an_element_not_shown(self, verifier, fail):
-        expect_failure(lambda: verifier().assert_visibility("Option 47", "0", fail=fail), Code.E0201, "'Option 47' is not on the screen.")
+    def test_an_element_not_shown(self, verifier):
+        expect_failure(lambda: verifier().assert_visibility("Option 47", "0"), Code.E0201, "'Option 47' is not on the screen.")
 
-    @pytest.mark.skip(reason="bug: fail=false raises E0201 on a missing element instead of returning False")
-    def test_an_element_not_shown_with_fail_off_returns_false(self, verifier):
-        assert verifier().assert_visibility("Option 47", "0", fail="false") is False
+    @pytest.mark.parametrize("check", ["assert_visibility", "assert_presence"])
+    @pytest.mark.parametrize("fail", [False, "false", " FALSE "])
+    def test_an_element_not_shown_with_fail_off_returns_false(self, verifier, check, fail):
+        assert getattr(verifier(), check)("Option 47", "0", fail=fail) is False
 
 
 class TestIsElement:

@@ -244,7 +244,7 @@ class Verifier:
         :return: True if the rule is satisfied, False otherwise.
         """
         seconds, rule = int(timeout_str), checked_rule(rule)
-        return self._popup_step("assert_presence", elements, lambda: self._assert_common(
+        return self._soft_assert("assert_presence", elements, fail, lambda: self._assert_common(
             elements, seconds, rule, event_name, fail, method_name="assert_presence"))
 
     def assert_visibility(self, elements: str, timeout_str: str = "30", rule: str = 'any', event_name: Optional[str] = None, fail: bool | str = True) -> bool:
@@ -262,8 +262,17 @@ class Verifier:
         :return: True if the rule is satisfied, False otherwise.
         """
         seconds, rule = int(timeout_str), checked_rule(rule)
-        return self._popup_step("assert_visibility", elements, lambda: self._assert_common(
+        return self._soft_assert("assert_visibility", elements, fail, lambda: self._assert_common(
             elements, seconds, rule, event_name, fail, method_name="assert_visibility"))
+
+    def _soft_assert(self, keyword: str, elements: str, fail: bool | str, look: Callable[[], bool]) -> bool:
+        try:
+            return self._popup_step(keyword, elements, look)
+        except OpticsError as e:
+            if str(fail).strip().lower() != "false" or e.code in (*_POPUP_ENDS, Code.E0205) or not is_element_not_found(e.code):
+                raise
+            internal_logger.info(f"{keyword}: {e.summary}")
+            return False
 
     def _assert_common(
         self, elements: str, timeout: int, rule: str,

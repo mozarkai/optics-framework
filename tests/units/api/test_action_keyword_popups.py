@@ -159,6 +159,7 @@ ASSERTIONS = [
 ]
 SOFT_CHECKS = [
     pytest.param(lambda v: v.assert_presence("Balance card", "0"), id="assert_presence"),
+    pytest.param(lambda v: v.assert_presence("Balance card", "0", fail="false"), id="assert_presence fail off"),
     pytest.param(lambda v: v.validate_screen("Balance card", "0"), id="validate_screen"),
     pytest.param(lambda v: v.is_element("Balance card", "visible", 0), id="is_element visible"),
     pytest.param(lambda v: v.is_element("Balance card", "invisible", 0), id="is_element invisible"),
@@ -241,11 +242,12 @@ class TestAssertions:
         assert keywords(phone, rule(check="before_every_step")).verifier.validate_screen("Balance card", "0", rule="both") is False
         assert phone.taps == []
 
-    def test_a_locator_that_is_not_valid(self, keywords, run):
+    @pytest.mark.parametrize("fail", [True, "false"])
+    def test_a_locator_that_is_not_valid(self, keywords, run, fail):
         phone = Phone(app(), rate_us())
         verifier = keywords(phone, rule()).verifier
         with pytest.raises(OpticsError) as caught:
-            verifier.assert_presence("id:", "0")
+            verifier.assert_presence("id:", "0", fail=fail)
         assert caught.value.code == Code.E0205
         assert phone.taps == []
         assert run.drain() == []
