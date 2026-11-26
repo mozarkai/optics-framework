@@ -23,7 +23,7 @@ from selenium.common.exceptions import (
     NoSuchWindowException,
     TimeoutException,
 )
-from selenium.webdriver.remote.command import Command  # type: ignore
+from appium.webdriver.mobilecommand import MobileCommand
 from appium.options.android.uiautomator2.base import UiAutomator2Options
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.webdriver.common.action_chains import ActionChains  # type: ignore
@@ -775,7 +775,7 @@ class Appium(DriverInterface):
     def _populate_attached_driver_capabilities(self, driver: WebDriver) -> None:
         """Fetch capabilities from the attached session and set them on the driver if possible."""
         try:
-            resp = driver.execute(Command.GET_SESSION, None)
+            resp = driver.execute(MobileCommand.GET_SESSION, None)
             value = resp.get(self.RESPONSE_VALUE, {}) if isinstance(resp, dict) else {}
             capabilities = value.get(self.RESPONSE_CAPABILITIES, value)
             if not isinstance(capabilities, dict):

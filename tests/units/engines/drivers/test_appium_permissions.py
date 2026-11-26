@@ -60,15 +60,6 @@ def test_on_ios_permissions_set_nothing_and_say_where_the_prompt_rule_goes(monke
                        "appium:settings[autoClickAlertSelector] capability.") in internal_log
 
 
-def test_attaching_with_only_a_session_id_sets_no_permissions(monkeypatch):
-    """Pins today's behavior: the driver never reads the running session's capabilities."""
-    server = AppiumServer(device={"platformName": "Android", "appPackage": "in.app"})
-    appium_driver(monkeypatch, server, {"appium:sessionId": "running"}, permissions={"camera": "allow"}).start_session()
-    assert server.commands("mobile: changePermissions") == []
-
-
-@pytest.mark.skip(reason="bug: an attached session never reads its capabilities, because Command.GET_SESSION does "
-                         "not exist in Selenium 4")
 def test_attaching_with_only_a_session_id_sets_the_permissions_of_the_running_app(monkeypatch):
     running = {"platformName": "Android", "appPackage": "in.app"}
     server = AppiumServer({"getSession": {"value": {"capabilities": running}}}, device=running)
