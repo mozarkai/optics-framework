@@ -243,7 +243,7 @@ Run context → kernel → `utils` → project model → events and report → d
 ## Output artefacts
 
 `config.execution_output_path` (default `<project>/execution_output/`, or `cwd/execution_output` without a project; a remote-caller session's own temp folder) receives:
-- `junit_output.xml` — built by `JUnitEventHandler` (`Junit_eventhandler.py:192`), written once by `flush()` (`:377`) from `close()` (`:394`).
+- `junit_output.xml` — built by `JUnitEventHandler` (`Junit_eventhandler.py:192`), written once by `flush()` (`:388`) from `close()` (`:405`).
 - `logs.json` — when `config.json_log: true` (`_maybe_setup_junit`, `session_manager.py:40`).
 - screenshots — `ActionKeyword._save_screenshot_if_available` (`:468`), AOI overlays (`_maybe_save_aoi_screenshot`, `:48`), annotated frames (`_save_annotated_for_result`, `:70`). Element boxes are in window coordinates and must be scaled with `utils.scale_bboxes_for_screenshot` (`common/utils.py:1374`) before drawing, or annotations skew on high-DPI displays. Gated by `Config.save_captures` (`config_handler.py:234`, default `True`; `optics serve` turns it off): `capture_output_dir` is then `None` and `_capture_screenshot_safe` skips the capture unless self-heal needs it.
 - `failed_steps_elements.json` — the screen elements each failed step left, in the MCP elements format (`TestRunner._save_failure_elements`, `test_runnner.py:662`), written once at the end of the run by `_write_failed_steps_elements` (`test_runnner.py:673`).
@@ -284,7 +284,7 @@ When a change breaks a test, either the test found a regression (fix the code) o
    - Renaming a public method on `ActionKeyword` / `AppManagement` / `Verifier` / `FlowControl` breaks every CSV/YAML that names it, its `optics.py:Optics` wrapper and the code `optics generate` emits.
    - A keyword's Robot display name (the `@keyword(...)` string) is independent of the method name.
    - The `E02*` / `X0201` check in `fallback.advances` (`is_element_not_found`) (`common/fallback.py:18`) is load-bearing; don't reuse the prefix for non-element errors.
-   - `Event.entity_type` values drive `JUnitEventHandler._handle_test_case_event` (`Junit_eventhandler.py:258`) / `_handle_module_event` (`:285`) / `_handle_keyword_event` (`:295`).
+   - `Event.entity_type` values drive `JUnitEventHandler._handle_test_case_event` (`Junit_eventhandler.py:258`) / `_handle_module_event` (`:296`) / `_handle_keyword_event` (`:306`).
    - Changing how `determine_element_type` (`utils.py:317`) classifies a string changes which strategy fires.
 3. **Conventional Commits** — the commitizen hook (`.cz.toml`) rejects anything but `feat:` / `fix:` / `refactor:` / `docs:` / `chore:` / `test:` / `perf:` / `style:` / `build:` / `ci:`.
 4. **Python 3.12+ only** (`python = ">=3.12,<4.0"`); use modern typing.
