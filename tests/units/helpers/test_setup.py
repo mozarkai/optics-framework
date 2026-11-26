@@ -77,7 +77,7 @@ class TestEngineInstallerApp:
         ran = tools("installed\n")
         app = EngineInstallerApp()
         async with app.run_test() as pilot:
-            app.selected_engines = {"Appium": ALL_ENGINES["Appium"]}
+            await pilot.click("#action_appium")
             await pilot.click("#install")
             await app.workers.wait_for_complete()
             await pilot.pause()
