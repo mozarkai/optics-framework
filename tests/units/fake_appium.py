@@ -44,14 +44,33 @@ class AppiumServer:
 
     def __init__(self, answers=None, page="<hierarchy/>", device=None):
         self.answers, self.page, self.device = dict(answers or {}), page, dict(device or {})
-        self.log, self.sessions = [], 0
+        self.log, self.sessions, self.front = [], 0, None
 
     def received(self, command, *args):
         self.log.append((command, *args))
-        answer = self.answers.get(command)
+        if command not in self.answers:
+            return self._unscripted(command, *args)
+        answer = self.answers[command]
         if isinstance(answer, BaseException):
             raise answer
         return answer(*args) if callable(answer) else answer
+
+    def _unscripted(self, command, *args):
+        """The device's own answer: the app in front is the last one the session opened."""
+        if command == "activate_app":
+            self.front = args[0]
+        elif command == "mobile: startActivity":
+            self.front = args[0]["intent"].split("/")[0]
+        elif command == "current_package":
+            return self.front
+        elif command == "mobile: activeAppInfo":
+            return {"bundleId": self.front}
+        return None
+
+    def opened(self, capabilities):
+        if capabilities.get("appium:autoLaunch", capabilities.get("autoLaunch", True)):
+            self.front = next((capabilities[key] for key in ("appium:appPackage", "appPackage", "appium:bundleId",
+                                                              "bundleId") if key in capabilities), self.front)
 
     def commands(self, *names):
         return [entry for entry in self.log if entry[0] in names]
@@ -97,6 +116,7 @@ class AppiumServer:
                     server.sessions += 1
                     requested = params["capabilities"]
                     session_id = server.received("new_session", requested) or f"session-{server.sessions}"
+                    server.opened(requested)
                     return {"value": {"sessionId": session_id, "capabilities": {**requested, **server.device}}}
                 return server.received(command, params)
 

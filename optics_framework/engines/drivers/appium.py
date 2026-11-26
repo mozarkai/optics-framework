@@ -1141,7 +1141,7 @@ class Appium(DriverInterface):
 
     def _show_started_app(self, app: Optional[str]) -> None:
         """An attached session, or autoLaunch off, can leave another app in front of the one the session names."""
-        if app and self._front_app(self._require_driver()) not in (app, None):
+        if app and self._active_platform() in MOBILE and self._front_app(self._require_driver()) != app:
             self._bring_to_front(app)
 
     def _bring_to_front(self, app: Optional[str]) -> None:
@@ -1498,12 +1498,9 @@ class Appium(DriverInterface):
         self._app_command(driver, "activate_app", app_id)
 
     def _front_app(self, driver: WebDriver) -> Optional[str]:
-        """Package or bundle id of the app in front; None where the platform cannot tell."""
-        platform = self._active_platform()
-        if platform not in MOBILE:
-            return None
+        """Package or bundle id of the app in front of a phone; None when this read failed."""
         try:
-            if platform == ANDROID:
+            if self._active_platform() == ANDROID:
                 return driver.current_package
             return driver.execute_script("mobile: activeAppInfo").get("bundleId")
         except Exception as e:
@@ -1517,15 +1514,16 @@ class Appium(DriverInterface):
 
     def _wait_until_in_front(self, driver: WebDriver, app_id: str) -> None:
         """The activate call returns before the app is in front, and some devices report success for an app that closed."""
+        if self._active_platform() not in MOBILE:
+            return
         deadline = time.monotonic() + _LAUNCH_SETTLE_S
         while True:
             front = self._front_app(driver)
-            if front is None or front == app_id or self._shows_system_prompt(front):
+            if front is not None and (front == app_id or self._shows_system_prompt(front)):
                 return
             if time.monotonic() >= deadline:
-                raise OpticsError(
-                    Code.E0401, message=f"Launched '{app_id}', but '{front}' is in front: the app closed or did not open"
-                )
+                shown = f"'{front}' is in front: the app closed or did not open" if front else "the app in front could not be read"
+                raise OpticsError(Code.E0401, message=f"Launched '{app_id}', but {shown}")
             time.sleep(_LAUNCH_POLL_S)
 
     @staticmethod
