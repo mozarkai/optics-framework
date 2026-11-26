@@ -41,7 +41,7 @@ from optics_framework.common.utils import SpecialKey
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.engines.drivers.appium_UI_helper import UIHelper
 from optics_framework.engines.drivers import appium_fields
-from optics_framework.engines.drivers.appium_popup import AppiumScreen
+from optics_framework.engines.drivers.appium_popup import ANDROID_SYSTEM_PACKAGES, AppiumScreen
 from optics_framework.engines.drivers.appium_tv import TvWebApp
 from optics_framework.engines.drivers.appium_platforms import (
     PlatformProfile,
@@ -229,6 +229,9 @@ class _QueryForwardingConnection(AppiumConnection):
 
 _MISSING_DRIVER = re.compile(r"Could not find a driver for automationName '([^']*)'")
 _APP_HINT = "Make sure that the app is installed on the device and that its package name or bundle id is correct."
+_LAUNCH_SETTLE_S = 5.0
+_LAUNCH_POLL_S = 0.5
+_IOS_HOME = "com.apple.springboard"
 
 
 def _command_executor_and_config(
@@ -598,6 +601,7 @@ class Appium(DriverInterface):
             driver.execute_script("mobile: startActivity", {"intent": f"{package}/{activity}"})
         else:
             driver.activate_app(package)
+        self._wait_until_in_front(driver, package)
 
     def apply_permissions(self) -> None:
         """Grant or revoke each configured permission for the app under test on Android; on iOS it only warns."""
@@ -1125,6 +1129,7 @@ class Appium(DriverInterface):
                 app_activity=app_activity,
                 event_name=event_name,
             )
+            self._show_started_app(app_identifier)
         else:
             # With no app named, bring back the session's own app: launch_other_app may have put another in front.
             # A TV has no other app to come back from, and its driver takes no activate command.
@@ -1134,11 +1139,18 @@ class Appium(DriverInterface):
         internal_logger.debug(f"Launched application with event: {event_name}")
         return session_id if session_id else None
 
+    def _show_started_app(self, app: Optional[str]) -> None:
+        """An attached session, or autoLaunch off, can leave another app in front of the one the session names."""
+        if app and self._front_app(self._require_driver()) not in (app, None):
+            self._bring_to_front(app)
+
     def _bring_to_front(self, app: Optional[str]) -> None:
         if not app:
             return
         try:
             self._activate_app(self._require_driver(), app)
+        except OpticsError:
+            raise
         except Exception as exc:
             raise OpticsError(Code.E0401, message=f"Could not open {app}", cause=exc, hint=_APP_HINT) from exc
 
@@ -1481,8 +1493,40 @@ class Appium(DriverInterface):
     def _activate_app(self, driver: WebDriver, app_id: str) -> None:
         if not self._is_desktop():
             driver.activate_app(app_id)
+            self._wait_until_in_front(driver, app_id)
             return
         self._app_command(driver, "activate_app", app_id)
+
+    def _front_app(self, driver: WebDriver) -> Optional[str]:
+        """Package or bundle id of the app in front; None where the platform cannot tell."""
+        platform = self._active_platform()
+        if platform not in MOBILE:
+            return None
+        try:
+            if platform == ANDROID:
+                return driver.current_package
+            return driver.execute_script("mobile: activeAppInfo").get("bundleId")
+        except Exception as e:
+            raise_if_session_dead(e)
+            internal_logger.debug(f"Could not read the app in front: {e}")
+        return None
+
+    def _shows_system_prompt(self, front: str) -> bool:
+        """A permission prompt or system alert over the app, which a popup rule or the next step may answer."""
+        return front in ANDROID_SYSTEM_PACKAGES or (front == _IOS_HOME and self.read_alert() is not None)
+
+    def _wait_until_in_front(self, driver: WebDriver, app_id: str) -> None:
+        """The activate call returns before the app is in front, and some devices report success for an app that closed."""
+        deadline = time.monotonic() + _LAUNCH_SETTLE_S
+        while True:
+            front = self._front_app(driver)
+            if front is None or front == app_id or self._shows_system_prompt(front):
+                return
+            if time.monotonic() >= deadline:
+                raise OpticsError(
+                    Code.E0401, message=f"Launched '{app_id}', but '{front}' is in front: the app closed or did not open"
+                )
+            time.sleep(_LAUNCH_POLL_S)
 
     @staticmethod
     def _app_command(driver: WebDriver, route: str, app_id: str) -> None:
