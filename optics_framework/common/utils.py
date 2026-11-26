@@ -1501,7 +1501,7 @@ def bboxes_from_webelements(
     return result
 
 
-_STRUCTURED_LOCATORS = ("/", "(", "xpath=", "css=")
+_STRUCTURED = ("XPath", "CSS")
 
 
 def split_locators(elements: str) -> list[str]:
@@ -1517,20 +1517,29 @@ def split_locators(elements: str) -> list[str]:
 
 
 def _locator_end(text: str, start: int) -> int:
-    head = text[start:].lstrip()
-    if not head.startswith(_STRUCTURED_LOCATORS):
-        end = text.find("|", start)
-        return len(text) if end < 0 else end
-    escapes, depth, quote, i = head.startswith("css="), 0, "", start
+    plain = text.find("|", start)
+    plain = len(text) if plain < 0 else plain
+    end, closed = _structured_end(text, start)
+    if determine_element_type(text[start:plain]) in _STRUCTURED:
+        return end
+    if closed and determine_element_type(text[start:end]) in _STRUCTURED:
+        return end
+    return plain
+
+
+def _structured_end(text: str, start: int) -> tuple[int, bool]:
+    """Where an XPath or CSS locator at ``start`` ends, and whether its quotes and brackets all closed."""
+    escapes = determine_element_type(text[start:]) != "XPath"
+    depth, quote, i = 0, "", start
     while i < len(text):
         if escapes and text[i] == "\\":
             i += 2
             continue
         if text[i] == "|" and depth == 0 and not quote:
-            return i
+            return i, True
         depth, quote = _nesting(text[i], depth, quote)
         i += 1
-    return len(text)
+    return len(text), depth == 0 and not quote
 
 
 def _nesting(char: str, depth: int, quote: str) -> tuple[int, str]:
