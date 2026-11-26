@@ -1,13 +1,11 @@
 """How a step's written params become a keyword's arguments: ``${name}`` values, ``key=value`` params and ``store_as``."""
 import inspect
-import json
 import re
 from collections.abc import Iterable
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from optics_framework.common import test_context, utils
 from optics_framework.common.error import Code, OpticsError, undefined_element
-from optics_framework.common.logging_config import holding_logs_for_secret, mask_secrets, register_secret
 from optics_framework.common.models import ElementData
 
 
@@ -108,35 +106,6 @@ def step_candidates(method: Callable, params: List[Any], elements: ElementData, 
     return candidates
 
 
-def _inline_targets(method: Any, params: list) -> set[int]:
-    if getattr(method, "_substitutes_own_vars", False):
-        return set()
-    raw = utils.raw_param_indices(method)
-    return {i for i, p in enumerate(params) if i not in raw and isinstance(p, str) and "${" in p}
-
-
-def substitute_inline(method: Any, params: list, elements: ElementData) -> list:
-    """A whole-param ${name} is left for the fallback expansion; an unknown name fails the step."""
-    def substitute(param: str) -> str:
-        def value(ref: utils.VarRef) -> str:
-            written = f"${{{ref.name}}}"
-            if ref.escaped:
-                return written
-            values = elements.get_element(ref.name.strip())
-            if not values:
-                raise OpticsError(Code.E0403, message=f"Variable '{written}' in '{param}' is not defined.")
-            return str(values[0])
-        return utils.substitute_vars(param, value)
-
-    targets = _inline_targets(method, params)
-    return [substitute(p) if i in targets and utils.whole_var_name(p) is None else p for i, p in enumerate(params)]
-
-
-def unescape_vars(method: Any, params: list) -> list:
-    targets = _inline_targets(method, params)
-    return [p.replace("$${", "${") if i in targets else p for i, p in enumerate(params)]
-
-
 def step_arguments(method: Callable, combo: Iterable[Any], elements: ElementData, undefined: Callable[[str], OpticsError] = undefined_element) -> Tuple[List[Any], Dict[str, Any]]:
     """One combination's positional and named args, split by the keyword's signature, with ``${name}`` resolved."""
     def resolve(param: Any) -> Any:
@@ -148,12 +117,12 @@ def step_arguments(method: Callable, combo: Iterable[Any], elements: ElementData
             raise undefined(name)
         return value
 
-    params = substitute_inline(method, list(combo), elements)
+    params = utils.substitute_inline(method, list(combo), elements)
     positional, named = split_params_by_signature(method, params)
     raw = utils.raw_param_indices(method)
     signature = readable_signature(method)
     raw_names = {p.name for i, p in enumerate(signature.parameters.values()) if i in raw} if signature else set()
-    args = unescape_vars(method, [p if i in raw else resolve(p) for i, p in enumerate(positional)])
+    args = utils.unescape_vars(method, [p if i in raw else resolve(p) for i, p in enumerate(positional)])
     return args, {key: value if key in raw_names else resolve(value) for key, value in named.items()}
 
 
@@ -181,22 +150,3 @@ def resolve_scalar_param(session: Any, param: str) -> str:
     if not value:
         raise OpticsError(Code.E0201, message=f"{param} has no value in the project's elements")
     return str(value[0])
-
-
-def store_result(elements: ElementData, name: str, result: Any) -> str:
-    utils.require_store_name(name)
-    if result is None:
-        raise OpticsError(Code.E0403, message=f"Cannot store '{name}': the keyword returned no value.")
-    value = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
-    register_secret(elements.secrets, name, value)
-    elements.store(name, value)
-    return value
-
-
-def call_and_store(elements: ElementData, method: Callable, args: list, kwargs: dict, store_as: str | None) -> tuple[Any, dict[str, str]]:
-    """Returns the keyword's result and, masked for reports, what store_as kept."""
-    with holding_logs_for_secret(store_as):
-        returned = method(*args, **kwargs)
-        if store_as is None:
-            return returned, {}
-        return returned, {store_as: mask_secrets(store_result(elements, store_as, returned))}

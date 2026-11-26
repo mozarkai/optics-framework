@@ -20,9 +20,7 @@ from optics_framework.common.models import ApiData, ElementData
 from optics_framework.common.caller_policy import refuse_server_read
 from optics_framework.common.error import OpticsError, Code, plain
 from optics_framework.common import expression, fallback, utils
-from optics_framework.common.runner.step_params import (
-    bind_params, call_and_store, resolve_scalar_param, step_arguments, step_candidates,
-)
+from optics_framework.common.runner.step_params import bind_params, resolve_scalar_param, step_arguments, step_candidates
 
 
 NO_SESSION_PRESENT = "Session is None after ensure_session call."
@@ -205,7 +203,7 @@ class FlowControl:
             positional, named = step_arguments(method, combo, elements)
             bind_params(keyword, method, positional, named)
             execution_logger.info(f"Executing {keyword} with params: {positional} {named or ''}".rstrip())
-            return call_and_store(elements, method, positional, named, store_as)[0]
+            return utils.call_and_store(elements, method, positional, named, store_as)[0]
 
         return fallback.run(step_candidates(method, params, elements), attempt, f"keyword '{keyword}'")
 
