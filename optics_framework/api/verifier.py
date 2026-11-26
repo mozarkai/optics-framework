@@ -239,7 +239,8 @@ class Verifier:
         """
         Asserts the presence of elements -- anywhere in the page/DOM, visible or not.
 
-        :param elements: Elements separated by "|" to check (Image templates, OCR templates, or XPaths).
+        :param elements: Elements separated by "|" to check (Image templates, OCR templates, or XPaths);
+            a "|" inside quotes, brackets or parentheses belongs to its locator.
         :param timeout_str: The time to wait for the elements in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
@@ -257,7 +258,8 @@ class Verifier:
         from :meth:`assert_presence`, which reports found even for elements that exist in
         the page/DOM but are off-screen (e.g. not yet scrolled into view).
 
-        :param elements: Elements separated by "|" to check (Image templates, OCR templates, or XPaths).
+        :param elements: Elements separated by "|" to check (Image templates, OCR templates, or XPaths);
+            a "|" inside quotes, brackets or parentheses belongs to its locator.
         :param timeout_str: The time to wait for the elements to become visible, in seconds.
         :param rule: The rule for verification ("any" or "all").
         :param event_name: The name of the event associated with the assertion, if any.
@@ -283,7 +285,7 @@ class Verifier:
         event_name: Optional[str], fail: bool | str, method_name: str,
     ) -> bool:
         fail = str(fail).strip().lower() != "false"
-        elements_list = elements.split('|')
+        elements_list = utils.split_locators(elements)
 
         grouped_elements = self._group_elements_by_type(elements_list)
         result_parts, timestamps = self._process_element_groups(grouped_elements, timeout, rule, method_name)

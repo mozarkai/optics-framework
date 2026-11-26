@@ -1499,3 +1499,21 @@ def bboxes_from_webelements(
             continue
         result.append(bbox_from_webelement_like(obj))
     return result
+
+
+def split_locators(elements: str) -> list[str]:
+    """The locators in a ``|``-separated list; a ``|`` inside quotes, brackets or parentheses stays in its locator."""
+    parts, start, depth, quote = [], 0, 0, ""
+    for i, char in enumerate(elements):
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "\"'":
+            quote = char
+        elif char in "[(":
+            depth += 1
+        elif char in "])":
+            depth = max(depth - 1, 0)
+        elif char == "|" and depth == 0:
+            parts.append(elements[start:i])
+            start = i + 1
+    return [*parts, elements[start:]]
