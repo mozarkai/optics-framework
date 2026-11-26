@@ -2,7 +2,7 @@ import asyncio
 import logging
 import threading
 import time
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Optional, Dict, List, Any
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
@@ -20,6 +20,16 @@ class EventStatus(str, Enum):
     ERROR = "ERROR"
     SKIPPED = "SKIPPED"
     RETRYING = "RETRYING"
+
+
+class EntityType(StrEnum):
+    """What an event is about: a test case holds modules, a module holds keywords, a popup event names its keyword."""
+    EXECUTION = "execution"
+    TEST_CASE = "test_case"
+    MODULE = "module"
+    KEYWORD = "keyword"
+    SESSION = "session"
+    POPUP = "popup"
 
 
 class CommandType(str, Enum):
