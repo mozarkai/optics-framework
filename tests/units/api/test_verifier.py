@@ -9,8 +9,8 @@ SUBMIT = (10, 20)
 
 @pytest.fixture
 def verifier(tmp_path):
-    def build(*nodes, ocr=False):
-        return phone_keywords(Phone(nodes), tmp_path, ocr=ocr).verifier
+    def build(*nodes, ocr=False, images=False):
+        return phone_keywords(Phone(nodes), tmp_path, ocr=ocr, images=images).verifier
     return build
 
 
@@ -28,6 +28,12 @@ class TestAssertVisibility:
     @pytest.mark.parametrize("fail", [False, "false", " FALSE "])
     def test_an_element_not_shown_with_fail_off_returns_false(self, verifier, check, fail):
         assert getattr(verifier(), check)("Option 47", "0", fail=fail) is False
+
+    @pytest.mark.parametrize("check", ["assert_visibility", "assert_presence"])
+    @pytest.mark.parametrize("elements", ["Option 47|button.png", "Submit|missing.png"])
+    def test_any_of_two_kinds_passes_on_the_kind_shown(self, verifier, check, elements):
+        shown = verifier(Node("Submit", SUBMIT), Node("", (50, 60), image="button.png"), images=True)
+        assert getattr(shown, check)(elements, "0") is True
 
 
 class TestIsElement:
