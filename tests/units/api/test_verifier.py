@@ -47,8 +47,14 @@ class TestAssertPresence:
     def test_a_pipe_inside_a_locator_stays_in_it(self, verifier, locator):
         assert verifier(Node(locator, SUBMIT)).assert_presence(locator, "0") is True
 
-    def test_a_pipe_between_locators_separates_them(self, verifier):
-        assert verifier(Node("Submit", SUBMIT)).assert_presence("Missing|Submit", "0") is True
+    @pytest.mark.parametrize("first", [
+        pytest.param("Missing", id="after text"),
+        pytest.param("Don't stop", id="after text with an apostrophe"),
+        pytest.param("Price [USD", id="after text with a bracket"),
+        pytest.param("css=#item\\[", id="after a CSS escape"),
+    ])
+    def test_a_pipe_between_locators_separates_them(self, verifier, first):
+        assert verifier(Node("Submit", SUBMIT)).assert_presence(f"{first}|Submit", "0") is True
 
 
 class TestIsElement:
