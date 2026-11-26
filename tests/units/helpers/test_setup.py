@@ -32,9 +32,9 @@ class TestResolveEngines:
 
 
 @pytest.fixture
-def venv(tools, monkeypatch, tmp_path):
+def venv(tool_folder, monkeypatch, tmp_path):
     """A writable venv whose python is the fake installer tool."""
-    env = Environment(kind=EnvKind.VENV, python=str(tools.folder / "python"), prefix=str(tmp_path),
+    env = Environment(kind=EnvKind.VENV, python=str(tool_folder / "python"), prefix=str(tmp_path),
                       has_pip=True, writable=True, creator="venv")
     monkeypatch.setattr(setup, "detect", lambda: env)
     return env
