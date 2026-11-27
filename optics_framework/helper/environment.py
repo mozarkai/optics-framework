@@ -267,6 +267,11 @@ def plan_install(env: Environment, specs: list[str]) -> InstallPlan:
 
     if env.kind is EnvKind.TOOL:
         manager = env.manager or "uv"
+        if manager == "uv" and env.uv and "archive-v0" not in Path(env.prefix).parts and os.name != "nt":
+            head, *rest = specs
+            return InstallPlan(
+                [env.uv, "tool", "install", "--force", head, *(arg for spec in rest for arg in ("--with", spec))],
+                "This is a uv tool environment, so uv installs the tool again with these packages.")
         return InstallPlan(
             None,
             f"This is a {manager} tool environment, which {manager} rebuilds on "

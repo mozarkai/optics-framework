@@ -2,13 +2,15 @@ import re
 import subprocess  # nosec B404
 import threading
 from collections import deque
-from importlib.metadata import PackageNotFoundError, version
+import json
+from importlib.metadata import PackageNotFoundError, distribution, version
 from typing import Deque, Dict, List, Optional
 import sys
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Checkbox, Button, Header, Footer, Static
+from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from pydantic import BaseModel
 
@@ -389,6 +391,61 @@ def _installed_version() -> Optional[str]:
         return None
 
 
+def _has(package: str) -> bool:
+    try:
+        distribution(package)
+    except PackageNotFoundError:
+        return False
+    return True
+
+
+def installed_extras() -> set[str]:
+    """The optics-framework extras whose packages for this platform are all installed."""
+    try:
+        dist = distribution(DISTRIBUTION_NAME)
+    except PackageNotFoundError:
+        return set()
+    requirements = [Requirement(line) for line in dist.requires or []]
+    found = set()
+    for extra in dist.metadata.get_all("Provides-Extra") or []:
+        needed = [r.name for r in requirements if _only_for(r, extra)]
+        if needed and all(map(_has, needed)):
+            found.add(extra)
+    return found
+
+
+def _only_for(requirement: Requirement, extra: str) -> bool:
+    """Whether ``requirement`` is installed on this platform for ``extra`` and not without it."""
+    marker = requirement.marker
+    return bool(marker) and marker.evaluate({"extra": extra}) and not marker.evaluate({"extra": ""})
+
+
+def _git_source() -> str | None:
+    """``git+<url>@<revision>`` when optics-framework came from git, so a reinstall keeps that code (PEP 610)."""
+    try:
+        raw = distribution(DISTRIBUTION_NAME).read_text("direct_url.json")
+    except PackageNotFoundError:
+        return None
+    try:
+        origin = json.loads(raw or "{}")
+    except ValueError:
+        return None
+    vcs = origin.get("vcs_info") or {}
+    if vcs.get("vcs") != "git" or not origin.get("url"):
+        return None
+    return f"git+{origin['url']}@{vcs.get('requested_revision') or vcs['commit_id']}"
+
+
+def optics_spec(extras: set[str]) -> str:
+    """optics-framework with ``extras`` and every extra it already has, from where it came: a uv or pipx reinstall drops what it does not name."""
+    spec = f"{DISTRIBUTION_NAME}[{','.join(sorted(extras | installed_extras()))}]"
+    source = _git_source()
+    if source:
+        return f"{spec} @ {source}"
+    installed = _installed_version()
+    return f"{spec}=={installed}" if installed else spec
+
+
 def install_next_steps_text() -> str:
     """Concrete next steps shown after a successful engine install.
 
@@ -472,12 +529,7 @@ def install_extras(requests: List[InstallRequest], *, stream: bool = True) -> tu
     if not requests:
         return False, "No engines selected."
 
-    extras = sorted({req.engine.extra for req in requests})
-    installed = _installed_version()
-    spec = f"{DISTRIBUTION_NAME}[{','.join(extras)}]"
-    if installed:
-        spec = f"{spec}=={installed}"
-
+    spec = optics_spec({req.engine.extra for req in requests})
     pinned = [f"{req.engine.packages[0]}{req.version}" for req in requests if req.version]
 
     env = detect()
@@ -499,8 +551,8 @@ def install_extras(requests: List[InstallRequest], *, stream: bool = True) -> tu
             # pulls the required OS libraries.
             run([env.python, "-m", "playwright", "install", "--with-deps", "chromium"])
 
-        success = ("Engine packages installed. Services like the Appium "
-                   "server still need to be started separately.")
+        success = ("Engine packages installed. Restart a running optics mcp or optics serve "
+                   "so it loads them; services like the Appium server still need to be started separately.")
         if plan.note and not stream:
             return True, f"{plan.note}\n{success}"
         return True, success

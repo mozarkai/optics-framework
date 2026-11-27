@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -54,7 +55,7 @@ class TestInstallExtras:
         assert ok is True
         assert [line.split()[:4] for line in ran()] == [["python", "-m", "pip", "install"],
                                                         ["python", "-m", "playwright", "install"]]
-        assert "--disable-pip-version-check optics-framework[playwright]" in ran()[0]
+        assert re.search(r"--disable-pip-version-check optics-framework\[[^\]]*\bplaywright\b", ran()[0])
         assert ran()[1] == "python -m playwright install --with-deps chromium"
         assert capfd.readouterr().out.count("installed") == 2
 
