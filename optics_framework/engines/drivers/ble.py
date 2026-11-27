@@ -227,6 +227,8 @@ class BLEDriver(DriverInterface):
         self._read_screen: Optional[Callable[[], list[dict]]] = None
         self._found_search_box: Optional[tuple[float, float]] = None
         self._opens_with: Optional[str] = None
+        # Set at the first action, so a dry run leaves the phone as it is.
+        self._brightness_due = True
         try:
             with _mapped():
                 self._dongle = airhand.Dongle(self.capabilities.serial, port=self.capabilities.port, touch=self.platform.finger)
@@ -239,11 +241,6 @@ class BLEDriver(DriverInterface):
             except BaseException:
                 self._dongle.close()
                 raise
-        try:
-            self.apply_brightness()
-        except OpticsError as exc:
-            # A dry run, or a phone that links later, still opens; a lost link fails the first action instead.
-            internal_logger.warning(f"The screen brightness was not set: {exc}")
 
     def _use_host(self, host: str) -> None:
         with _mapped():
@@ -255,15 +252,15 @@ class BLEDriver(DriverInterface):
 
     def apply_brightness(self) -> None:
         steps, level = self.platform.brightness_steps, self.capabilities.brightness
-        if steps is None or level is None:
-            return
-        with _mapped():
-            # Twice the steps reaches the lowest level from any level, so the presses up always end at the same one.
-            for _ in range(2 * steps):
-                self._dongle.media("brightnessdown")
-            for _ in range(math.floor(level * steps / 100 + 0.5)):
-                self._dongle.media("brightnessup")
-        internal_logger.info(f"Screen brightness set to about {level}%")
+        if steps is not None and level is not None:
+            with _mapped():
+                # Twice the steps reaches the lowest level from any level, so the presses up always end at the same one.
+                for _ in range(2 * steps):
+                    self._dongle.media("brightnessdown")
+                for _ in range(math.floor(level * steps / 100 + 0.5)):
+                    self._dongle.media("brightnessup")
+            internal_logger.info(f"Screen brightness set to about {level}%")
+        self._brightness_due = False
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
@@ -289,7 +286,7 @@ class BLEDriver(DriverInterface):
         return self._dongle.identity
 
     def press_coordinates(self, coor_x: int, coor_y: int, event_name: Optional[str] = None) -> None:
-        self._capture(event_name)
+        self._begin_action(event_name)
         with _mapped():
             self._dongle.tap(*self._to_fractions(coor_x, coor_y))
             self._park()
@@ -304,7 +301,7 @@ class BLEDriver(DriverInterface):
                 self._dongle.move(*point)
 
     def press_percentage_coordinates(self, percentage_x: float, percentage_y: float, repeat: int, event_name: Optional[str] = None) -> None:
-        self._capture(event_name)
+        self._begin_action(event_name)
         with _mapped():
             for _ in range(repeat):
                 self._dongle.tap(percentage_x / 100, percentage_y / 100)
@@ -315,7 +312,7 @@ class BLEDriver(DriverInterface):
         frame = self.capabilities.frame
         end_x = min(max(x_coor + dx * swipe_length, 0), frame.width)
         end_y = min(max(y_coor + dy * swipe_length, 0), frame.height)
-        self._capture(event_name)
+        self._begin_action(event_name)
         self._drag(self._to_fractions(x_coor, y_coor), self._to_fractions(end_x, end_y), SWIPE_MS)
 
     def swipe_percentage(self, x_percentage: int, y_percentage: int, direction: str, swipe_length_percentage: int, event_name: Optional[str] = None) -> None:
@@ -328,7 +325,7 @@ class BLEDriver(DriverInterface):
         fractions = utils.SCROLL_FRACTIONS.get(direction)
         if fractions is None:
             raise OpticsError(Code.E0403, message=f"Unknown scroll direction '{direction}'")
-        self._capture(event_name)
+        self._begin_action(event_name)
         if self.platform.scroll_ms is not None:
             with _mapped():
                 self._dongle.swipe(fractions[:2], fractions[2:], self.platform.scroll_ms)
@@ -347,7 +344,7 @@ class BLEDriver(DriverInterface):
         if isinstance(text, utils.SpecialKey):
             self.press_keycode(text.value, event_name)
             return
-        self._capture(event_name)
+        self._begin_action(event_name)
         with _mapped():
             self._dongle.type_text(utils.strip_sensitive_prefix(text))
 
@@ -364,7 +361,7 @@ class BLEDriver(DriverInterface):
             self.go_back(event_name)
             return
         media = MEDIA.get(name, name)
-        self._capture(event_name)
+        self._begin_action(event_name)
         with _mapped():
             if name == "search":
                 self._search()
@@ -374,14 +371,14 @@ class BLEDriver(DriverInterface):
                 self._dongle.key(name)
 
     def clear_text(self, event_name: Optional[str] = None) -> None:
-        self._capture(event_name)
+        self._begin_action(event_name)
         with _mapped():
             self._dongle.key(self.platform.select_all)
             self._dongle.key("backspace")
 
     def go_back(self, event_name: Optional[str] = None) -> None:
         self._require("go_back")
-        self._capture(event_name)
+        self._begin_action(event_name)
         kind, name = self.platform.back
         with _mapped():
             getattr(self._dongle, kind)(name)
@@ -454,7 +451,7 @@ class BLEDriver(DriverInterface):
         name = (app_name or "").strip()
         if not name:
             raise OpticsError(Code.E0403, message="The ble driver opens an app by the name the system search shows; give that name")
-        self._capture(event_name)
+        self._begin_action(event_name)
         methods = self.capabilities.launch_methods
         if self._read_screen is None:
             self._launch_unchecked(name, methods)
@@ -633,7 +630,15 @@ class BLEDriver(DriverInterface):
         frame = self.capabilities.frame
         return float(x) / frame.width, float(y) / frame.height
 
-    def _capture(self, event_name: Optional[str]) -> None:
+    def _begin_action(self, event_name: Optional[str]) -> None:
+        if self._brightness_due:
+            try:
+                self.apply_brightness()
+            except OpticsError as exc:
+                if exc.code == Code.E0106:
+                    raise
+                self._brightness_due = False
+                internal_logger.warning(f"The screen brightness was not set: {exc}")
         if event_name:
             self.event_sdk.capture_event(event_name)
 

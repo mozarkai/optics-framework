@@ -49,6 +49,7 @@ class Events:
 def make_driver(fake: FakeDongle, platform="android", **caps) -> BLEDriver:
     capabilities = {"port": fake.port, "platform": platform, "frame": {"width": 1080, "height": 2340}, **caps}
     driver = BLEDriver(config={"capabilities": capabilities}, event_sdk=Events())
+    driver.apply_brightness()
     fake.commands[:] = _without_brightness(fake.commands)
     return driver
 
@@ -77,9 +78,12 @@ def _brightness_after(commands, steps: int, start: int) -> int:
         pytest.param("ios", {"brightness": None}, 16, None, id="left as it is"),
     ],
 )
-def test_a_phone_session_opens_at_the_configured_brightness(plugged, platform, caps, steps, level):
+def test_a_phone_is_at_the_configured_brightness_from_its_first_action(plugged, platform, caps, steps, level):
     fake = plugged()
-    BLEDriver(config={"capabilities": {"port": fake.port, "platform": platform, "frame": {"width": 1080, "height": 2340}, **caps}}, event_sdk=Events())
+    driver = BLEDriver(config={"capabilities": {"port": fake.port, "platform": platform, "frame": {"width": 1080, "height": 2340}, **caps}}, event_sdk=Events())
+    assert fake.commands == []
+    driver.press_keycode("enter")
+    assert fake.commands[-1] == ("key", "enter")
     ends = {_brightness_after(fake.commands, steps, start) for start in (0, steps // 2, steps)}
     assert ends == ({level} if level is not None else {0, steps // 2, steps})
 
