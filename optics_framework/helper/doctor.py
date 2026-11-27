@@ -70,6 +70,9 @@ _AIRHAND_DOCS = "https://github.com/chinmayajha/airhand"
 _XA11Y_DRIVER = "xa11y driver"
 _XA11Y_PACKAGE = "appium-xa11y-driver"
 _XA11Y_INSTALL = f"appium driver install --source=npm {_XA11Y_PACKAGE}"
+# The server a local setup starts; the cloud samples reach theirs through a tunnel on another port.
+_LOCAL_APPIUM = {("127.0.0.1", 4723), ("localhost", 4723)}
+_DESKTOP_SYSTEMS = {"mac": "Darwin", "windows": "Windows", "linux": "Linux"}
 _MACOS_PERMISSIONS = "macOS permissions"
 
 
@@ -165,11 +168,14 @@ def check_web(playwright_remote: bool = False) -> list[Check]:
     return [_playwright_row(playwright_remote), _selenium_row()]
 
 
-def check_desktop(host: str = "127.0.0.1", port: int = 4723, system: str | None = None) -> list[Check]:
+def check_desktop(host: str = "127.0.0.1", port: int = 4723, system: str | None = None,
+                  target: str | None = None) -> list[Check]:
     """Appium reachability, the xa11y driver in APPIUM_HOME, and on macOS the privacy permissions it needs."""
+    system = system or platform.system()
     server = _appium_row(host, port)
-    rows = [server, _xa11y_row(_appium_home(), server.status == "ok")]
-    if (system or platform.system()) == "Darwin":
+    local = (host, port) in _LOCAL_APPIUM and _DESKTOP_SYSTEMS.get(target or "", system) == system
+    rows = [server, _xa11y_row(_appium_home(), server.status == "ok", local)]
+    if system == "Darwin":
         rows.append(Check(
             _MACOS_PERMISSIONS, "info", "not checked by doctor",
             "System Settings > Privacy & Security: give Accessibility, and Screen Recording for screenshots, "
@@ -182,14 +188,15 @@ def _appium_home() -> Path:
     return Path(os.environ.get("APPIUM_HOME") or os.path.expanduser(os.path.join("~", ".appium")))
 
 
-def _xa11y_row(home: Path, server_up: bool) -> Check:
+def _xa11y_row(home: Path, server_up: bool, local: bool = True) -> Check:
     found = next(filter(None, map(_xa11y_version, _xa11y_paths(home))), None)
     if found:
         return Check(_XA11Y_DRIVER, "ok", f"{_XA11Y_PACKAGE} {found} in {home}")
+    if not local:
+        return Check(_XA11Y_DRIVER, "info", "not checked: the project's server is not a local Appium for this desktop")
     hint = _XA11Y_INSTALL if shutil.which("appium") else f"npm install -g appium, then {_XA11Y_INSTALL}"
     if server_up:
-        # A tunnelled cloud server, or a local one with its own APPIUM_HOME, has drivers doctor cannot see.
-        return Check(_XA11Y_DRIVER, "info", f"not found in {home}; the running server may have it elsewhere",
+        return Check(_XA11Y_DRIVER, "warn", f"not found in {home}; the running server may use another APPIUM_HOME",
                      f"{hint}, or set APPIUM_HOME to the folder the server uses and run optics doctor again")
     return Check(_XA11Y_DRIVER, "warn", f"not installed in {home}", hint)
 
@@ -859,14 +866,15 @@ def diagnose(folder: str | None = None) -> Diagnosis:
     failure)."""
     host, port = "127.0.0.1", 4723
     if folder:
-        target = _appium_target(folder)
-        if target:
-            host, port = target
+        address = _appium_target(folder)
+        if address:
+            host, port = address
+    target = _appium_platform(folder) if folder else "android"
     sections: list[tuple[str, list[Check]]] = [
         ("Core", check_core()),
         ("Engines", check_engines()),
         ("Mobile", check_mobile(host, port)),
-        ("Desktop", check_desktop(host, port)),
+        ("Desktop", check_desktop(host, port, target=target)),
         ("Web", check_web(_playwright_is_remote(folder))),
     ]
     ble_caps = _ble_caps(folder)
@@ -884,7 +892,6 @@ def diagnose(folder: str | None = None) -> Diagnosis:
     rows = [row for _, section_rows in sections for row in section_rows]
     drivers = _enabled_driver_names(folder) if folder else set()
     # Hints read the raw row names, so a secret that matches a name cannot hide a blocking warning.
-    target = _appium_platform(folder) if folder else "android"
     blocking = [_literal(hint) for hint in _mandatory_hints(rows, drivers, target)]
     sections = [(title, [_literal_check(row) for row in section_rows]) for title, section_rows in sections]
     return Diagnosis(sections, blocking, any(row.status == "fail" for row in rows))
