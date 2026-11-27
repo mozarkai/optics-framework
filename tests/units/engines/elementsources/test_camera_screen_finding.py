@@ -1,5 +1,6 @@
 """CameraScreenshot finds the phone screen in a camera frame and names why it cannot see it."""
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ from optics_framework.engines.elementsources.camera_screenshot import CameraScre
 
 SCREEN_W, SCREEN_H = 180, 390
 CAMERA = (960, 540)
+LENS_TRAVEL_SECONDS = 0.02
 
 
 def _content() -> np.ndarray:
@@ -202,19 +204,20 @@ def _blurred(frame: np.ndarray, sigma: float) -> np.ndarray:
 
 
 class _Webcam:
-    """A webcam whose view is sharp only within one lens step of ``peak``; ``None`` is its own autofocus, hunting."""
+    """A webcam sharp only within one lens step of ``peak`` and once the lens stops; ``None`` is its own autofocus, hunting."""
 
     span = range(0, 256, 5)
     key = "046d:085e"
 
     def __init__(self, view):
-        self.view, self.value, self.peak, self.moves = view, None, 35, 0
+        self.view, self.value, self.peak, self.moves, self.moved_at = view, None, 35, 0, 0.0
 
     def focus(self, value):
-        self.value, self.moves = value, self.moves + 1
+        self.value, self.moves, self.moved_at = value, self.moves + 1, time.monotonic()
 
     def retrieve(self):
-        blur = 30.0 if self.value is None else 0.3 + 0.4 * abs(self.value - self.peak)
+        moving = time.monotonic() - self.moved_at < LENS_TRAVEL_SECONDS
+        blur = 30.0 if self.value is None or moving else 0.3 + 0.4 * abs(self.value - self.peak)
         return True, _blurred(self.view(), blur)
 
     read = retrieve
@@ -231,7 +234,7 @@ class _Webcam:
 def webcam(monkeypatch, tmp_path):
     monkeypatch.setenv("OPTICS_HOME", str(tmp_path))
     monkeypatch.setattr(camera_screenshot, "SETTLE_SECONDS", 0)
-    monkeypatch.setattr(camera_screenshot, "LENS_SETTLE_SECONDS", 0)
+    monkeypatch.setattr(camera_screenshot, "LENS_SETTLE_SECONDS", 2.5 * LENS_TRAVEL_SECONDS)
     monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
 
     def use(view, lens=None, **screen):
