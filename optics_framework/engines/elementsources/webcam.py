@@ -6,6 +6,7 @@ import os
 import plistlib
 import shutil
 import socket
+import statistics
 import struct
 import subprocess  # nosec B404 - runs launchctl with fixed arguments
 import sys
@@ -25,6 +26,7 @@ LARGEST_SIZE = 10000
 COMMON_SIZES = ((3840, 2160), (2560, 1440), (1920, 1080), (1280, 720))
 SETTLE_SECONDS = 1.0
 MAX_BUFFERED_FRAMES = 10
+MIN_TIMED_GRABS = 5
 DEFAULT_FPS = 30.0
 EXPOSURE_MODES = {"V4L2": (1, 3), "DSHOW": (0.25, 0.75)}
 EXPOSURE_DRIFT = 0.25
@@ -73,12 +75,14 @@ class Webcam:
             return
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         _request_size(self.cap, width, height)
-        fps = self.cap.get(cv2.CAP_PROP_FPS)
-        self.period = 1 / (fps if 1 <= fps <= 240 else DEFAULT_FPS)
+        waits = []
         settle_until = time.monotonic() + SETTLE_SECONDS
         while time.monotonic() < settle_until:
+            started = time.monotonic()
             if not self.cap.grab():
                 break
+            waits.append(time.monotonic() - started)
+        self.period = _frame_period(waits, self.cap.get(cv2.CAP_PROP_FPS))
         locked = _lock_controls(self.cap)
         ok, frame = self.cap.read()
         if not ok:
@@ -113,6 +117,13 @@ class Webcam:
     def release(self) -> None:
         if self.cap.isOpened():
             self.cap.release()
+
+
+def _frame_period(waits: list[float], reported_fps: float) -> float:
+    """The time between frames as measured: AVFoundation reports 5 fps for a camera that runs at 30."""
+    if len(waits) >= MIN_TIMED_GRABS:
+        return statistics.median(waits)
+    return 1 / (reported_fps if 1 <= reported_fps <= 240 else DEFAULT_FPS)
 
 
 def _request_size(cap: cv2.VideoCapture, width: int | None, height: int | None) -> None:

@@ -42,6 +42,8 @@ SCREEN_OFF_SECONDS = 3.0
 SCREEN_OFF_POLL_SECONDS = 0.5
 LENS_SETTLE_SECONDS = 0.15
 POINTER_SETTLE_SECONDS = 0.6
+# A local webcam's frame is exposed after the read, so only the pointer's move needs time; a remote camera may buffer.
+WEBCAM_POINTER_SETTLE_SECONDS = 0.3
 # The focus sweep also looks this far past the screen's edges, at the phone's body, so a dark screen still has edges.
 FOCUS_MARGIN = 0.1
 
@@ -436,7 +438,7 @@ class CameraScreenshot(ElementSourceInterface):
 
     def _at_pointer(self, place: np.ndarray) -> np.ndarray:
         self.driver.point_at((float(place[0]), float(place[1])))
-        time.sleep(POINTER_SETTLE_SECONDS)
+        time.sleep(POINTER_SETTLE_SECONDS if self.webcam is None else WEBCAM_POINTER_SETTLE_SECONDS)
         return np.mean([self._capture_frame().astype(np.float32) for _ in range(AVERAGED_FRAMES)], axis=0)
 
     def _unrotated_corners(self) -> np.ndarray:
