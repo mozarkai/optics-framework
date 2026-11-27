@@ -1,9 +1,0 @@
-test_case,test_step
-Add Contact with Contact App  ,Launch Contact Application
-Add Contact with Contact App  ,Navigate to Add Contact Page
-Add Contact with Contact App  ,Enter Contact Details in Contact Form
-Add Contact with Contact App  ,Click on Save Button
-Add Contact with Contact App  ,Verify Contact is Added
-
-View Added Contact Details ,Launch Contact Application
-View Added Contact Details ,Check the First Contact

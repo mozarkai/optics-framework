@@ -1,0 +1,5 @@
+Element_Name,Element_ID,Element_ID_2
+Search_Settings,Search settings,//*[@content-desc="Search settings"]
+About_Phone,About phone,About emulated device
+Device_Name,Device name,//*[@text="Device name"]
+Build_Number,Build number,//*[@text="Build number"]

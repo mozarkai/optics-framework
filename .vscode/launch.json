@@ -2,13 +2,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Optics CLI - Execute Contact",
+            "name": "Optics CLI - Execute Android",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/optics_framework/helper/cli.py",
             "args": [
                 "execute",
-                "${workspaceFolder}/optics_framework/samples/contact",
+                "${workspaceFolder}/optics_framework/samples/android",
                 "--runner",
                 "test_runner"
             ],
@@ -21,32 +21,13 @@
             "stopOnEntry": false
         },
         {
-            "name": "Optics CLI - Dry Run Contact",
+            "name": "Optics CLI - Dry Run Android",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/optics_framework/helper/cli.py",
             "args": [
                 "dry_run",
-                "${workspaceFolder}/optics_framework/samples/contact",
-                "--runner",
-                "test_runner"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "justMyCode": false,
-            "stopOnEntry": false
-        },
-        {
-            "name": "Optics CLI - Execute YouTube",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/optics_framework/helper/cli.py",
-            "args": [
-                "execute",
-                "${workspaceFolder}/optics_framework/samples/youtube",
+                "${workspaceFolder}/optics_framework/samples/android",
                 "--runner",
                 "test_runner"
             ],
@@ -63,7 +44,9 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/optics_framework/helper/cli.py",
-            "args": ["--help"],
+            "args": [
+                "--help"
+            ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "env": {

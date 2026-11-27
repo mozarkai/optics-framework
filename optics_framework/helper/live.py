@@ -276,7 +276,7 @@ def _compose_config(folder_path: Optional[str]) -> Config:
             message=(
                 "optics live needs a config.yaml with an enabled driver and elements source "
                 "in the project folder. See optics_framework/samples/ "
-                "(contact=appium, gmail_web=selenium, playwright=playwright)."
+                "(android=appium, browser=playwright)."
             ),
         )
     drivers = _enabled_drivers(config)

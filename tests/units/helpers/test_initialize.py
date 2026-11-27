@@ -21,7 +21,7 @@ def _args(name, **kw):
 
 
 class TestCreateProject:
-    @pytest.mark.parametrize("template", [None, "contact", "mobile_web"])
+    @pytest.mark.parametrize("template", [None, "android", "mobile_web"])
     def test_config_keeps_the_project_name_after_the_folder_is_renamed(self, tmp_path, monkeypatch, template):
         monkeypatch.delenv("UNSET", raising=False)
         create_project(_args("checkout$UNSET", path=str(tmp_path), template=template))
@@ -41,7 +41,7 @@ class TestInteractivePicker:
     @pytest.mark.parametrize(("typed_lines", "from_sample"), [
         (("abc", "2"), True),
         (("99", "1"), False),
-    ], ids=["a word, then Contacts", "out of range, then Blank"])
+    ], ids=["a word, then Android", "out of range, then Blank"])
     def test_an_answer_that_is_not_a_choice_asks_again(self, tmp_path, typed, capsys, typed_lines, from_sample):
         typed(*typed_lines)
         create_project(_args("app", path=str(tmp_path)))

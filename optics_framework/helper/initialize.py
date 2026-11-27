@@ -41,8 +41,8 @@ def _template_choices() -> list[tuple[str, str]]:
     """Ordered ``(display_name, folder_name)`` choices for the interactive picker.
 
     Built from ``samples/metadata.json`` (the ``displayName`` field) so the
-    picker shows friendly names ("Contacts") while still mapping back to the
-    underlying sample folder ("contact"). A "Blank project" sentinel is prepended
+    picker shows friendly names ("Android TV") while still mapping back to the
+    underlying sample folder ("android_tv"). A "Blank project" sentinel is prepended
     so a user can opt out of a template interactively. Falls back to folder names
     if the metadata file is missing or malformed."""
     choices: list[tuple[str, str]] = [("(Blank project)", "")]
@@ -119,7 +119,7 @@ driver_sources:
       #     platformName: Mac
       #     automationName: Xa11y
       #     app: com.apple.TextEdit
-      # or start from the desktop sample:  optics init <name> --template desktop_editor
+      # or start from the desktop sample:  optics init <name> --template mac_local
   # Web via a Selenium/WebDriver server.  Install:  optics setup --install selenium
   - selenium:
       enabled: false

@@ -1,0 +1,6 @@
+test_case,test_step
+Mac Suite Setup,Open Editor
+Type And Check A Note,Type A Note
+Type And Check A Note,Check The Note
+Type And Check A Note,Clear The Note
+Mac Suite Teardown,Close Editor
