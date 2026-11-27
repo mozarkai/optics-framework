@@ -5,7 +5,7 @@ driver_sources:
       capabilities:
         platformName: iOS
         automationName: XCUITest
-        deviceName: iPhone 16
+        deviceName: iPhone 16    # a simulator that xcrun simctl list devices available shows
         bundleId: com.apple.Preferences
         # udid: <device udid>    # a real iPhone
 
