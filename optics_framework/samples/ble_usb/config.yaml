@@ -1,0 +1,16 @@
+# An airhand dongle taps and types over Bluetooth; adb reads the screen over USB and does no taps.
+# frame must equal the phone's screenshot size.
+driver_sources:
+  - ble:
+      enabled: true
+      capabilities:
+        platform: android
+        frame: {width: 1080, height: 2400}
+
+elements_sources:
+  - usb_screenshot:
+      enabled: true
+
+text_detection:
+  - rapidocr:
+      enabled: true

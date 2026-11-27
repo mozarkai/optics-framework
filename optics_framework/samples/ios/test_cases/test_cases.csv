@@ -1,0 +1,5 @@
+test_case,test_step
+iOS Suite Setup,Open Settings
+Check About,Open About
+Check About,Back To General
+iOS Suite Teardown,Close Settings

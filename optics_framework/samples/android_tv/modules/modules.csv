@@ -1,0 +1,10 @@
+module_name,module_step,param_1,param_2
+Open TV Settings,Launch App
+Open TV Settings,Assert Presence,${Device_Preferences},20
+Open Device Preferences,Press Element,${Device_Preferences}
+Open Device Preferences,Assert Presence,${About},10
+Open About With The Remote,Press Keycode,${DPAD_CENTER}
+Open About With The Remote,Assert Presence,${Model},10
+Go Back Home,Press Keycode,${BACK}
+Go Back Home,Assert Presence,${Date_And_Time},10
+Go Back Home,Press Keycode,${HOME}

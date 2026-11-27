@@ -1,0 +1,19 @@
+# A Windows VM in the cloud that runs Appium with appium-xa11y-driver on 127.0.0.1:4723.
+# Appium has no authentication, so reach it through a tunnel, not a public port:
+#   ssh -N -o ExitOnForwardFailure=yes -L 4733:127.0.0.1:4723 user@windows-vm
+driver_sources:
+  - appium:
+      enabled: true
+      url: ${WINDOWS_APPIUM_URL:-http://127.0.0.1:4733}
+      capabilities:
+        platformName: Windows
+        automationName: Xa11y
+        app: calc.exe
+
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_page_source:
+      enabled: true
+  - appium_screenshot:
+      enabled: true

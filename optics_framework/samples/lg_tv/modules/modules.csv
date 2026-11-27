@@ -1,0 +1,13 @@
+module_name,module_step,param_1,param_2
+Open Birch TV,Launch App
+Open Birch TV,Assert Presence,${Featured},30
+Open A Shoe With The Remote,Press Keycode,DOWN
+Open A Shoe With The Remote,Press Keycode,RIGHT
+Open A Shoe With The Remote,Press Keycode,ENTER
+Open A Shoe With The Remote,Assert Presence,${Shoe_Title},10
+Back To Home,Press Keycode,BACK
+Back To Home,Assert Presence,${Featured},10
+Search For A Shoe,Press Element,${Search}
+Search For A Shoe,Enter Text,${Search_Box},trail runner
+Search For A Shoe,Assert Presence,${Shoe_Title},10
+Close Birch TV,Press Keycode,HOME

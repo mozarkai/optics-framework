@@ -1,0 +1,4 @@
+test_case,test_step
+Calculator Suite Setup,Open Calculator
+Add Two Numbers,Add Seven And Eight
+Calculator Suite Teardown,Close Calculator

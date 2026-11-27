@@ -1,0 +1,4 @@
+test_case,test_step
+Check The iOS Version,Open Settings
+Check The iOS Version,Open About
+Check The iOS Version,Close Settings

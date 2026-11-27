@@ -1,0 +1,18 @@
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://localhost:4723"
+      capabilities:
+        platformName: Android
+        automationName: UiAutomator2
+        deviceName: emulator-5554    # a TV on the network: adb connect <tv-ip>, then its serial
+        appPackage: com.android.tv.settings
+        appActivity: .MainSettings
+
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_page_source:
+      enabled: true
+  - appium_screenshot:
+      enabled: true

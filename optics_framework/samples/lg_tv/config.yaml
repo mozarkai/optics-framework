@@ -1,0 +1,17 @@
+# Needs Appium 2 with appium-lg-webos-driver, the webOS TV SDK (ares-cli) and the TV in Developer Mode.
+# Accept the remote pairing prompt on the TV at the first session.
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://localhost:4723"
+      capabilities:
+        platformName: LGTV
+        appium:automationName: webOS
+        appium:deviceHost: 192.168.1.50
+        appium:appId: com.birch.tv
+
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_screenshot:
+      enabled: true

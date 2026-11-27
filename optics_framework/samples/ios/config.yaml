@@ -1,0 +1,18 @@
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://localhost:4723"
+      capabilities:
+        platformName: iOS
+        automationName: XCUITest
+        deviceName: iPhone 16
+        bundleId: com.apple.Preferences
+        # udid: <device udid>    # a real iPhone
+
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_page_source:
+      enabled: true
+  - appium_screenshot:
+      enabled: true

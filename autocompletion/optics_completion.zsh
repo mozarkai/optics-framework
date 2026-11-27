@@ -18,7 +18,7 @@ local -a _optics_subcommands=(
 )
 
 # Static or dynamic values
-local -a templates=("android" "browser" "mac_local" "mobile_web")
+local -a templates=("android" "android_tv" "ble_camera" "ble_usb" "browser" "browser_profile" "ios" "lg_tv" "mac_cloud" "mac_local" "mobile_web" "samsung_tv" "windows_cloud")
 local -a runners=("test_runner" "pytest")
 local -a frameworks=("pytest" "robot")
 local -a transports=("stdio" "http")

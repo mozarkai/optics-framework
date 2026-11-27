@@ -1,0 +1,8 @@
+module_name,module_step,param_1,param_2
+Open Settings,Launch App,Settings
+Open Settings,Assert Presence,${Network},10
+Open Network Settings,Press Element,${Network}
+Open Network Settings,Assert Presence,${Airplane_Mode},10
+Back To Settings,Go Back
+Back To Settings,Assert Presence,${Connected_Devices},10
+Close Settings,Force Terminate App,Settings
