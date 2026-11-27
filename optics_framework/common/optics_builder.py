@@ -135,6 +135,14 @@ class OpticsBuilder:
         self._instances["element_source"] = element_source
         return element_source
 
+    def close_element_sources(self) -> None:
+        """Release what each element source built so far holds, such as a camera."""
+        built = self._instances.get("element_source")
+        for source in getattr(built, "instances", []):
+            close = getattr(source, "close", None)
+            if close is not None:
+                close()
+
     def instantiate_image_detection(self) -> Optional[InstanceFallback[ImageInterface]]:
         if not self.config.image_config:
             return None

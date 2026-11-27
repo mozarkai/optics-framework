@@ -12,7 +12,7 @@ from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.strategies import StrategyManager
-from optics_framework.engines.elementsources import camera_screenshot
+from optics_framework.engines.elementsources import camera_screenshot, webcam as webcam_module
 from optics_framework.engines.elementsources.camera_screenshot import CameraScreenshot
 
 SCREEN_W, SCREEN_H = 180, 390
@@ -233,7 +233,7 @@ class _Webcam:
 @pytest.fixture
 def webcam(monkeypatch, tmp_path):
     monkeypatch.setenv("OPTICS_HOME", str(tmp_path))
-    monkeypatch.setattr(camera_screenshot, "SETTLE_SECONDS", 0)
+    monkeypatch.setattr(webcam_module, "SETTLE_SECONDS", 0)
     monkeypatch.setattr(camera_screenshot, "LENS_SETTLE_SECONDS", 2.5 * LENS_TRAVEL_SECONDS)
     monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
 
