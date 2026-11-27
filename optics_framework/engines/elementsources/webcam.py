@@ -36,6 +36,9 @@ OPEN_SECONDS = 15.0
 POLL_SECONDS = 0.25
 FRAME_HEADER = struct.Struct("<III")
 SETTINGS_PATH = "System Settings > Privacy & Security > Camera"
+# The reader runs in its folder, so it takes no path or label as text.
+SOCKET_NAME = "s"
+JOB_BITS = 48
 ACCESS = {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized"}
 
 
@@ -192,12 +195,12 @@ class WebcamReader:
 
     def __init__(self, index: int, width: int | None, height: int | None) -> None:
         self.folder = tempfile.mkdtemp(prefix="optics-cam-")
-        self.label = f"org.optics-framework.camera.{uuid.uuid4().hex[:12]}"
+        job = uuid.uuid4().int >> (128 - JOB_BITS)
+        self.label = _label(job)
         self.sock: socket.socket | None = None
-        socket_path = os.path.join(self.folder, "s")
+        socket_path = os.path.join(self.folder, SOCKET_NAME)
         command = [
-            sys.executable, "-m", __name__, "--index", str(index), "--socket", socket_path,
-            "--owner", str(os.getpid()), "--label", self.label,
+            sys.executable, "-m", __name__, "--index", str(index), "--owner", str(os.getpid()), "--job", str(job),
         ]
         if width and height:
             command += ["--width", str(width), "--height", str(height)]
@@ -214,6 +217,7 @@ class WebcamReader:
             "Label": self.label,
             "ProgramArguments": command,
             "EnvironmentVariables": {"PYTHONPATH": package_root},
+            "WorkingDirectory": self.folder,
             "RunAtLoad": True,
             "KeepAlive": False,
             "StandardErrorPath": os.path.join(self.folder, "reader.log"),
@@ -259,6 +263,10 @@ class WebcamReader:
             self.sock.close()
             self.sock = None
         _unload(self.label, self.folder)
+
+
+def _label(job: int) -> str:
+    return f"org.optics-framework.camera.{job:012x}"
 
 
 def _unload(label: str, folder: str) -> None:
@@ -310,12 +318,12 @@ def _answered(index: int, width: int | None, height: int | None) -> Webcam | str
     return f"macOS does not let {_python()} use the camera ({access})\nAllow it in {SETTINGS_PATH}, then start again."
 
 
-def _serve(webcam: Webcam, socket_path: str, owner: int) -> None:
+def _serve(webcam: Webcam, owner: int) -> None:
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server.bind(socket_path + ".tmp")
-    os.chmod(socket_path + ".tmp", 0o600)
+    server.bind(SOCKET_NAME + ".tmp")
+    os.chmod(SOCKET_NAME + ".tmp", 0o600)
     server.listen(1)
-    os.rename(socket_path + ".tmp", socket_path)
+    os.rename(SOCKET_NAME + ".tmp", SOCKET_NAME)
     server.settimeout(1.0)
     while _alive(owner):
         try:
@@ -343,22 +351,21 @@ def _serve(webcam: Webcam, socket_path: str, owner: int) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Serve a webcam's frames to one Optics session over a Unix socket.")
     parser.add_argument("--index", type=int, required=True)
-    parser.add_argument("--socket", required=True)
     parser.add_argument("--owner", type=int, required=True)
-    parser.add_argument("--label", required=True)
+    parser.add_argument("--job", type=int, required=True)
     parser.add_argument("--width", type=int)
     parser.add_argument("--height", type=int)
     args = parser.parse_args(argv)
     opened = _answered(args.index, args.width, args.height)
     if isinstance(opened, str):
-        Path(args.socket + ".error").write_text(opened)
+        Path(SOCKET_NAME + ".error").write_text(opened)
         return
     try:
-        _serve(opened, args.socket, args.owner)
+        _serve(opened, args.owner)
     finally:
         opened.release()
         # Last: unloading the job ends this process.
-        _unload(args.label, os.path.dirname(args.socket))
+        _unload(_label(args.job), os.getcwd())
 
 
 if __name__ == "__main__":
