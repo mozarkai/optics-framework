@@ -26,6 +26,17 @@ class TestCSVDataReader:
         path = _write(tmp_path, "m.csv", "module_name,module_step,param_1\nM,Launch App,\n,Sleep,1\nM,,2\n")
         assert self.reader.read_modules(path) == {"M": [("Launch App", [])]}
 
+    @pytest.mark.parametrize(("content", "read", "expected"), [
+        (
+            "module_name,module_step,param_1,param_2\nM,Is Element,${x},invisible,10\n",
+            "read_modules",
+            {"M": [("Is Element", ["${x}", "invisible", "10"])]},
+        ),
+        ("Element_Name,Element_ID\nok,Ok,OK,text=Ok\n", "read_elements", {"ok": ["Ok", "OK", "text=Ok"]}),
+    ])
+    def test_cells_past_the_header_are_kept_in_order(self, tmp_path, content, read, expected):
+        assert getattr(self.reader, read)(_write(tmp_path, "f.csv", content)) == expected
+
     def test_read_error_definitions_parses_and_skips_incomplete(self, tmp_path):
         path = _write(
             tmp_path, "err.csv",

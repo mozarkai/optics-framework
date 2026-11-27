@@ -307,11 +307,19 @@ class DataReader(ABC):
         pass
 
 
+def _keep_overflow(row: dict, last_column: str) -> dict:
+    """Cells past the header continue its last column, so a step's fourth param needs no param_4 header."""
+    for n, value in enumerate(row.pop(None, None) or [], start=1):
+        row[f"{last_column}#{n}"] = value
+    return row
+
+
 def csv_rows(lines: Iterable[str]) -> list:
     """The rows of CSV text, keyed by lower-cased headers, with a short row's missing cells empty."""
     reader = csv.DictReader(lines, restval="")
     reader.fieldnames = [h.strip().lower() for h in reader.fieldnames or []]
-    return list(reader)
+    last_column = reader.fieldnames[-1] if reader.fieldnames else ""
+    return [_keep_overflow(row, last_column) for row in reader]
 
 
 def modules_from_rows(rows: list) -> dict:
