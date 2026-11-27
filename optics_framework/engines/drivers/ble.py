@@ -91,6 +91,8 @@ class Platform:
     wheel: Mapping[str, tuple[int, int]] = field(default_factory=dict)
     # How long a Scroll drag lasts, when the screen flings content on by the release speed.
     scroll_ms: Optional[int] = None
+    # Presses of a brightness key from the lowest level to the highest; a computer's keys may dim another screen.
+    brightness_steps: Optional[int] = None
 
 
 PLATFORMS: dict[str, Platform] = {
@@ -105,9 +107,18 @@ PLATFORMS: dict[str, Platform] = {
         app_list="meta",
         switcher="meta+tab",
         scroll_ms=ANDROID_SCROLL_MS,
+        brightness_steps=10,
     ),
     "ios": Platform(
-        None, "cmd+space", touch=True, media_home=True, select_all="cmd+a", last_app_card=0.5, search_returns=True, wheel=IOS_WHEEL
+        None,
+        "cmd+space",
+        touch=True,
+        media_home=True,
+        select_all="cmd+a",
+        last_app_card=0.5,
+        search_returns=True,
+        wheel=IOS_WHEEL,
+        brightness_steps=16,
     ),
     "macos": Platform(("key", "cmd+["), "cmd+space", touch=False, media_home=False, select_all="cmd+a", wheel=DESKTOP_WHEEL),
     "windows": Platform(("key", "alt+left"), "ctrl+escape", touch=False, media_home=False, wheel=DESKTOP_WHEEL),
@@ -137,6 +148,8 @@ class Capabilities(BaseModel):
     # Some Android launchers start an app search only from a tap on their search box.
     app_search: Optional[Point] = None
     launch: Optional[list[LaunchMethod]] = Field(None, min_length=1)
+    # In percent, set on a phone when the session opens: a camera reads a dim screen without glare. None leaves it as it is.
+    brightness: Optional[int] = Field(25, ge=0, le=100)
 
     @model_validator(mode="before")
     @classmethod
@@ -226,6 +239,11 @@ class BLEDriver(DriverInterface):
             except BaseException:
                 self._dongle.close()
                 raise
+        try:
+            self.apply_brightness()
+        except OpticsError as exc:
+            # A dry run, or a phone that links later, still opens; a lost link fails the first action instead.
+            internal_logger.warning(f"The screen brightness was not set: {exc}")
 
     def _use_host(self, host: str) -> None:
         with _mapped():
@@ -234,6 +252,18 @@ class BLEDriver(DriverInterface):
             except (airhand.Refused, airhand.HostUnavailable) as exc:
                 raise OpticsError(Code.E0501, message=f"capabilities.host '{host}'", cause=exc) from exc
         internal_logger.info(f"ble host: {chosen.name or chosen.address}")
+
+    def apply_brightness(self) -> None:
+        steps, level = self.platform.brightness_steps, self.capabilities.brightness
+        if steps is None or level is None:
+            return
+        with _mapped():
+            # Twice the steps reaches the lowest level from any level, so the presses up always end at the same one.
+            for _ in range(2 * steps):
+                self._dongle.media("brightnessdown")
+            for _ in range(math.floor(level * steps / 100 + 0.5)):
+                self._dongle.media("brightnessup")
+        internal_logger.info(f"Screen brightness set to about {level}%")
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
