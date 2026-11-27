@@ -314,8 +314,8 @@ def _serve(webcam: Webcam, socket_path: str, owner: int) -> None:
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(socket_path + ".tmp")
     os.chmod(socket_path + ".tmp", 0o600)
-    os.rename(socket_path + ".tmp", socket_path)
     server.listen(1)
+    os.rename(socket_path + ".tmp", socket_path)
     server.settimeout(1.0)
     while _alive(owner):
         try:
