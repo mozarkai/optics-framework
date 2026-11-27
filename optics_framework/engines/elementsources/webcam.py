@@ -12,7 +12,6 @@ import subprocess  # nosec B404 - runs launchctl with fixed arguments
 import sys
 import tempfile
 import time
-import uuid
 from pathlib import Path
 from typing import Protocol
 
@@ -38,7 +37,7 @@ FRAME_HEADER = struct.Struct("<III")
 SETTINGS_PATH = "System Settings > Privacy & Security > Camera"
 # The reader runs in its folder, so it takes no path or label as text.
 SOCKET_NAME = "s"
-JOB_BITS = 48
+FOLDER_PREFIX = "optics-cam-"
 ACCESS = {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized"}
 
 
@@ -194,13 +193,12 @@ class WebcamReader:
     """Frames from a reader process that launchd starts, so macOS asks the person once for this Python, whoever started Optics."""
 
     def __init__(self, index: int, width: int | None, height: int | None) -> None:
-        self.folder = tempfile.mkdtemp(prefix="optics-cam-")
-        job = uuid.uuid4().int >> (128 - JOB_BITS)
-        self.label = _label(job)
+        self.folder = tempfile.mkdtemp(prefix=FOLDER_PREFIX)
+        self.label = _label(self.folder)
         self.sock: socket.socket | None = None
         socket_path = os.path.join(self.folder, SOCKET_NAME)
         command = [
-            sys.executable, "-m", __name__, "--index", str(index), "--owner", str(os.getpid()), "--job", str(job),
+            sys.executable, "-m", __name__, "--index", str(index), "--owner", str(os.getpid()),
         ]
         if width and height:
             command += ["--width", str(width), "--height", str(height)]
@@ -265,8 +263,9 @@ class WebcamReader:
         _unload(self.label, self.folder)
 
 
-def _label(job: int) -> str:
-    return f"org.optics-framework.camera.{job:012x}"
+def _label(folder: str) -> str:
+    """The launchd label, named after the reader's random folder, which both processes know without being told."""
+    return f"org.optics-framework.camera.{os.path.basename(folder).removeprefix(FOLDER_PREFIX)}"
 
 
 def _unload(label: str, folder: str) -> None:
@@ -352,7 +351,6 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Serve a webcam's frames to one Optics session over a Unix socket.")
     parser.add_argument("--index", type=int, required=True)
     parser.add_argument("--owner", type=int, required=True)
-    parser.add_argument("--job", type=int, required=True)
     parser.add_argument("--width", type=int)
     parser.add_argument("--height", type=int)
     args = parser.parse_args(argv)
@@ -365,7 +363,8 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         opened.release()
         # Last: unloading the job ends this process.
-        _unload(_label(args.job), os.getcwd())
+        folder = os.getcwd()
+        _unload(_label(folder), folder)
 
 
 if __name__ == "__main__":
