@@ -264,7 +264,7 @@ def _appium_row(host: str, port: int) -> Check:
         socket.create_connection((host, port), timeout=_SOCKET_TIMEOUT_S).close()
     except OSError:
         return Check(_APPIUM_SERVER, "warn", f"not reachable at {host}:{port}",
-                     "Start it in another terminal with the `appium` command.")
+                     "Start it in another terminal with the `appium` command, or open your tunnel to a server on another machine.")
     return Check(_APPIUM_SERVER, "ok", f"reachable at {host}:{port}")
 
 
