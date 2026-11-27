@@ -121,10 +121,10 @@ def test_doctor_names_a_missing_adb(monkeypatch, tmp_path):
 
 def test_optics_serve_refuses_usb_screenshots_from_a_remote_caller(monkeypatch):
     monkeypatch.setattr(expose_api, "server_reads_allowed", False)
-    before = set(expose_api.session_manager.sessions)
     with TestClient(expose_api.app) as client:
+        before = set(expose_api.session_manager.sessions)
         resp = client.post("/v1/sessions/start", json={"driver_sources": ["playwright"], "elements_sources": ["usb_screenshot"]})
+        assert set(expose_api.session_manager.sessions) == before
     assert resp.status_code >= 400
     assert "E0501" in resp.text
     assert "usb_screenshot" in resp.text
-    assert set(expose_api.session_manager.sessions) == before
