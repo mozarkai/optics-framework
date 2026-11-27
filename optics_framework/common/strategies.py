@@ -1233,7 +1233,7 @@ class StrategyManager:
             except Exception as e:
                 internal_logger.debug(f"OCR read no rows from {strategy.element_source.__class__.__name__}: {e}")
                 raise_if_session_dead(e)
-                last_error = e
+                last_error = _kept_error(last_error, e)
                 continue
             if rows:
                 return rows
@@ -1309,3 +1309,8 @@ def boxed_frame(
     if not bboxes:
         return None
     return utils.annotate(frame.copy(), utils.scale_bboxes_for_screenshot(bboxes, element_source, frame))
+
+
+def _kept_error(kept: Exception | None, new: Exception) -> Exception:
+    """The error to report when no source reads: a blind camera's, else the latest."""
+    return kept if kept is not None and _is_blind(kept) else new
