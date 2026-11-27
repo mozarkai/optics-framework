@@ -14,8 +14,10 @@ from optics_framework.common.elementsource_interface import ElementSourceInterfa
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.image_decode import MAX_ENCODED_BYTES, check_encoded_length, decode_image
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.models import invalid_fields
 from optics_framework.common.session_liveness import raise_if_session_dead
 from optics_framework.engines.elementsources import camera_lens, screen_finder
+from optics_framework.engines.elementsources.webcam import Frames, open_webcam
 
 
 ENV_SCREENSHOT_URL = "WEBCAM_SCREENSHOT_URL"
@@ -26,20 +28,13 @@ HTTP_SCHEMES = frozenset({"http", "https"})
 HTTP_TIMEOUT_SECONDS = 15
 HTTP_OK = 200
 ROTATIONS = {"clockwise": cv2.ROTATE_90_CLOCKWISE, "counterclockwise": cv2.ROTATE_90_COUNTERCLOCKWISE}
+ROTATION_NAMES = {"cw": "clockwise", "ccw": "counterclockwise"}
 HTTP_ERROR_FIELD_LIMIT = 300
 HTTP_ERROR_BODY_LIMIT = 4096
 # Larger than any screen; a remote caller sets the size, and the frame is allocated at it.
 MAX_OUTPUT_SIDE = 8192
 CAPTURE_DEADLINE_SECONDS = 15
 READ_CHUNK_BYTES = 65536
-# Backends clamp a size they cannot give to the largest one they can.
-LARGEST_SIZE = 10000
-COMMON_SIZES = ((3840, 2160), (2560, 1440), (1920, 1080), (1280, 720))
-SETTLE_SECONDS = 1.0
-MAX_BUFFERED_FRAMES = 10
-DEFAULT_FPS = 30.0
-EXPOSURE_MODES = {"V4L2": (1, 3), "DSHOW": (0.25, 0.75)}
-EXPOSURE_DRIFT = 0.25
 BRIGHTNESS_STEPS = 8
 BRIGHTNESS_RAMP_SECONDS = 1.0
 AVERAGED_FRAMES = 3
@@ -47,6 +42,8 @@ SCREEN_OFF_SECONDS = 3.0
 SCREEN_OFF_POLL_SECONDS = 0.5
 LENS_SETTLE_SECONDS = 0.15
 POINTER_SETTLE_SECONDS = 0.6
+# A local webcam's frame is exposed after the read, so only the pointer's move needs time; a remote camera may buffer.
+WEBCAM_POINTER_SETTLE_SECONDS = 0.3
 # The focus sweep also looks this far past the screen's edges, at the phone's body, so a dark screen still has edges.
 FOCUS_MARGIN = 0.1
 
@@ -157,7 +154,9 @@ class CapabilitiesConfig(BaseModel):
     @field_validator("rotation", mode="before")
     @classmethod
     def _lowercase_rotation(cls, rotation: Any) -> Any:
-        return rotation.lower() if isinstance(rotation, str) else rotation
+        if not isinstance(rotation, str):
+            return rotation
+        return ROTATION_NAMES.get(rotation.lower(), rotation.lower())
 
     @property
     def has_camera_index_or_url(self) -> Any:
@@ -190,8 +189,7 @@ class CameraScreenshot(ElementSourceInterface):
                 **config.get("capabilities", {})
             )
         except ValidationError as ve:
-            internal_logger.error(f"Invalid capabilities: {ve}")
-            raise
+            raise OpticsError(Code.E0503, message=f"Invalid camera_screenshot capabilities: {invalid_fields(ve, config.get('capabilities'), 'capabilities')}") from None
         capabilities: CapabilitiesConfig = self.capabilities_model
 
         # Initialize configuration variables
@@ -221,15 +219,15 @@ class CameraScreenshot(ElementSourceInterface):
         self.http_url: str | None = None
         self._http_token: str | None = None
         self.sock = None
-        self.cap = None
-        self._frame_period = 1 / DEFAULT_FPS
+        self.webcam: Frames | None = None
         self.ip_address = None
         self.port = None
 
         endpoint, token = self._endpoint_and_token(capabilities)
 
         if self.camera_index is not None:
-            self.cap = self._open_webcam(self.camera_index, capabilities.camera_width, capabilities.camera_height)
+            self.webcam = open_webcam(self.camera_index, capabilities.camera_width, capabilities.camera_height)
+            self._lens = camera_lens.uvc_lens()
         elif endpoint and urlparse(endpoint).scheme.lower() in HTTP_SCHEMES:
             self.http_url = endpoint
             self._http_token = token
@@ -323,7 +321,7 @@ class CameraScreenshot(ElementSourceInterface):
 
         def sharpness() -> float:
             time.sleep(LENS_SETTLE_SECONDS)
-            gray = cv2.cvtColor(self._fresh_frame()[area], cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(self.webcam.frame()[area], cv2.COLOR_BGR2GRAY)
             return float(cv2.Laplacian(gray, cv2.CV_32F).var())
 
         started = time.monotonic()
@@ -440,7 +438,7 @@ class CameraScreenshot(ElementSourceInterface):
 
     def _at_pointer(self, place: np.ndarray) -> np.ndarray:
         self.driver.point_at((float(place[0]), float(place[1])))
-        time.sleep(POINTER_SETTLE_SECONDS)
+        time.sleep(POINTER_SETTLE_SECONDS if self.webcam is None else WEBCAM_POINTER_SETTLE_SECONDS)
         return np.mean([self._capture_frame().astype(np.float32) for _ in range(AVERAGED_FRAMES)], axis=0)
 
     def _unrotated_corners(self) -> np.ndarray:
@@ -494,67 +492,6 @@ class CameraScreenshot(ElementSourceInterface):
         os.makedirs(folder, exist_ok=True)
         return path if cv2.imwrite(path, frame) else None
 
-    def _open_webcam(self, index: int, width: int | None, height: int | None) -> cv2.VideoCapture:
-        cap = cv2.VideoCapture(index)
-        if not cap.isOpened():
-            internal_logger.error(f"Cannot open the camera at index {index}")
-            return cap
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        self._request_size(cap, width, height)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        self._frame_period = 1 / (fps if 1 <= fps <= 240 else DEFAULT_FPS)
-        settle_until = time.monotonic() + SETTLE_SECONDS
-        while time.monotonic() < settle_until:
-            if not cap.grab():
-                break
-        locked = self._lock_controls(cap)
-        self._lens = camera_lens.uvc_lens()
-        ok, frame = cap.read()
-        if not ok:
-            internal_logger.error(f"The camera at index {index} gives no frames")
-            return cap
-        internal_logger.info(
-            f"Camera {index} ({cap.getBackendName()}) captures {frame.shape[1]}x{frame.shape[0]} at"
-            f" {1 / self._frame_period:.0f} fps; locked: {', '.join(locked) or 'nothing'}"
-        )
-        return cap
-
-    @staticmethod
-    def _request_size(cap: cv2.VideoCapture, width: int | None, height: int | None) -> None:
-        if width and height:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-            granted = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-            if granted != (width, height):
-                internal_logger.warning(f"The camera gives {granted[0]}x{granted[1]}, not {width}x{height}")
-            return
-        default = cap.get(cv2.CAP_PROP_FRAME_WIDTH) * cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, LARGEST_SIZE)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LARGEST_SIZE)
-        if cap.get(cv2.CAP_PROP_FRAME_WIDTH) * cap.get(cv2.CAP_PROP_FRAME_HEIGHT) > default:
-            return
-        for size in COMMON_SIZES:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
-            if (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))) == size:
-                return
-
-    @staticmethod
-    def _lock_controls(cap: cv2.VideoCapture) -> list[str]:
-        """Fix focus, white balance and exposure where the backend lets it, so frames do not drift between reads."""
-        locked = [name for name, prop in (("focus", cv2.CAP_PROP_AUTOFOCUS), ("white balance", cv2.CAP_PROP_AUTO_WB)) if cap.set(prop, 0)]
-        modes = EXPOSURE_MODES.get(cap.getBackendName())
-        ok, before = cap.read()
-        if modes is None or not ok:
-            return locked
-        exposure = cap.get(cv2.CAP_PROP_EXPOSURE)
-        if cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, modes[0]) and cap.set(cv2.CAP_PROP_EXPOSURE, exposure):
-            ok, after = cap.read()
-            if ok and abs(float(after.mean()) - float(before.mean())) <= EXPOSURE_DRIFT * max(float(before.mean()), 1.0):
-                return [*locked, "exposure"]
-        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, modes[1])
-        return locked
-
     def _capture_frame(self) -> np.ndarray:
         if self.http_url:
             return self.take_http_screenshot()
@@ -564,33 +501,21 @@ class CameraScreenshot(ElementSourceInterface):
             except ConnectionError as e:
                 internal_logger.warning(f"TCP camera connection lost: {e}. Reconnecting once.")
                 return self._take_tcp_frame()
-        if self.cap is None or not self.cap.isOpened():
-            internal_logger.error("No valid webcam connection.")
+        if self.webcam is None:
             raise RuntimeError("No valid webcam connection.")
-        return self._fresh_frame()
+        return self.webcam.frame()
 
-    def _fresh_frame(self) -> np.ndarray:
-        """A frame exposed after this call: buffered frames come back at once, so grab until one has to wait."""
-        for _ in range(MAX_BUFFERED_FRAMES):
-            started = time.monotonic()
-            if not self.cap.grab():
-                break
-            if time.monotonic() - started >= self._frame_period / 3:
-                break
-        # The frame that waited may have started its exposure before this call.
-        if self.cap.grab():
-            ok, frame = self.cap.retrieve()
-            if ok:
-                return frame
-        internal_logger.error("Failed to capture frame from webcam.")
-        raise RuntimeError("Failed to capture frame from webcam.")
+    def close(self) -> None:
+        """Release the camera or the socket."""
+        if getattr(self, "webcam", None) is not None:
+            self.webcam.release()
+            self.webcam = None
+        if getattr(self, "sock", None) is not None:
+            self.sock.close()
+            self.sock = None
 
     def __del__(self):
-        """Release the camera or socket when the object is destroyed."""
-        if hasattr(self, "cap") and self.cap is not None and self.cap.isOpened():
-            self.cap.release()
-        if hasattr(self, "sock") and self.sock is not None:
-            self.sock.close()
+        self.close()
 
     def locate(self, element, index, *args, **kwargs) -> tuple:
         internal_logger.exception(

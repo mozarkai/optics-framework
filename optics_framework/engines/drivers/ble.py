@@ -13,6 +13,7 @@ from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.eventSDK import EventSDK
 from optics_framework.common.logging_config import internal_logger
+from optics_framework.common.models import invalid_fields
 
 try:
     import airhand
@@ -199,12 +200,16 @@ class BLEDriver(DriverInterface):
         if event_sdk is None:
             raise OpticsError(Code.E0101, message="The ble driver needs an EventSDK")
         if airhand is None:
-            raise OpticsError(Code.E0601, message="The ble driver needs the airhand package: pip install 'optics-framework[ble]', or run optics setup")
+            raise OpticsError(
+                Code.E0601,
+                message="The ble driver needs the airhand package; install it with: optics setup --install ble",
+                hint="Then reconnect or restart whatever runs Optics, such as the optics MCP server: a running process does not load new packages.",
+            )
         self.event_sdk = event_sdk
         try:
             self.capabilities = Capabilities(**(config or {}).get("capabilities", {}))
         except ValidationError as exc:
-            raise OpticsError(Code.E0503, message=f"Invalid ble capabilities: {exc}") from exc
+            raise OpticsError(Code.E0503, message=f"Invalid ble capabilities: {invalid_fields(exc, (config or {}).get('capabilities'), 'capabilities')}") from None
         self.platform = PLATFORMS[self.capabilities.platform]
         self._read_screen: Optional[Callable[[], list[dict]]] = None
         self._found_search_box: Optional[tuple[float, float]] = None

@@ -204,6 +204,10 @@ class SessionManager(SessionHandler):
                     driver.terminate()
                 except Exception as e:
                     internal_logger.warning("Failed to terminate driver %s: %s", driver, e)
+            try:
+                session.optics.close_element_sources()
+            except Exception as e:
+                internal_logger.warning("Failed to close the element sources: %s", e)
             session.inline_templates.clear()
         _release(session_id, getattr(session, "_session_dir", None))
 

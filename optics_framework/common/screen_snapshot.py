@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from optics_framework.common import utils
-from optics_framework.common.error import OpticsError
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.image_decode import decode_image
 from optics_framework.common.logging_config import internal_logger, is_secret_name
 from optics_framework.common.session_liveness import raise_if_session_dead
@@ -838,6 +838,8 @@ def read_screen(action_keyword: Any, png: bytes | None = None) -> list[dict] | N
         elements = action_keyword.strategy_manager.get_interactive_elements(None, compact=True)
     except OpticsError as exc:
         raise_if_session_dead(exc)
+        if exc.code == Code.E0305:
+            raise
         internal_logger.debug("Structured screen elements unavailable: %s", exc)
         return None
     for el in elements or []:

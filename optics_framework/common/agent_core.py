@@ -16,7 +16,7 @@ from typing import Any
 from optics_framework.common import utils
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.utils import substitute_vars, var_refs, whole_var_name
-from optics_framework.common.error import Code, ElementNotFound, OpticsError, is_element_not_found
+from optics_framework.common.error import ERROR_REGISTRY, Code, ElementNotFound, OpticsError, is_element_not_found
 from optics_framework.common.logging_config import (
     is_secret_name,
     register_config_secret,
@@ -115,10 +115,11 @@ class Fail(Exception):
     """A call that cannot go on; ``kind`` is an ``ADVICE`` key and ``message`` the error text as raised."""
 
     def __init__(
-        self, kind: str, fact: str, *, code: str | None = None, message: str = "", rows: Snapshot | None = None
+        self, kind: str, fact: str, *, code: str | None = None, message: str = "", rows: Snapshot | None = None,
+        hint: str | None = None,
     ) -> None:
         super().__init__(fact)
-        self.kind, self.code, self.rows = kind, code, rows
+        self.kind, self.code, self.rows, self.hint = kind, code, rows, hint
         self.message = message or fact
 
 
@@ -204,6 +205,19 @@ def error_parts(exc: BaseException) -> tuple[str | None, str]:
     return (str(code) if code else None), message
 
 
+def error_hint(exc: BaseException) -> str | None:
+    """The next step that an OpticsError, or the HTTP error that wraps one, names itself; never its code's general hint."""
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, dict):
+        code, hint = detail.get("code"), detail.get("hint")
+    elif isinstance(exc, OpticsError):
+        code, hint = exc.code, exc.hint
+    else:
+        return None
+    spec = ERROR_REGISTRY.get(str(code))
+    return None if spec is not None and hint == spec.hint else hint
+
+
 def _says_why(exc: BaseException) -> bool:
     """A miss whose chain names why it missed, such as an invalid XPath or a missing image engine."""
     seen: list[BaseException] = []
@@ -236,7 +250,7 @@ def as_fail(exc: BaseException, keyword: str = "", tried: Sequence[str] = ()) ->
         "session_lost": "the driver session ended.",
         "silent_failure": f"{keyword or 'the keyword'} reported an error: {message}.",
     }
-    return Fail(kind, facts.get(kind, message), code=code, message=message)
+    return Fail(kind, facts.get(kind, message), code=code, message=message, hint=error_hint(exc))
 
 
 def _invalid(hint: str) -> Fail:
@@ -895,22 +909,35 @@ class AgentSession:
         secret = self._mask_if_secret(p, into)
         result, strategy, error = await self._run_calls(p)
         typed = _value(p.calls, TYPED_VALUE_PARAMS)
-        after = await self._after(p, typed, error, before)
         ok = error is None
 
         def judge(snap: Snapshot | None) -> Verdict:
             return verify(ok, before, snap, action.present, action.absent, typed=typed, strategy=strategy, exact=p.exact)
 
-        verdict = judge(after)
-        if ok and _awaits_expectation(action, after, verdict):
-            after, _ = await self._poll(lambda snap: judge(snap).checks, time.monotonic() + EXPECT_WAIT_S, after)
-            verdict = judge(after)
+        after, verdict, error = await self._judged(action, p, typed, error, before, judge)
         step = Step(action, ok, verdict, before, after, p, result, strategy, error, key, typed, secret)
         if ok:
             self._focus.moved(p.calls[-1].keyword if p.calls else "", named)
             self.recorder.add(len(self.steps) + 1, p, secret, secret_hint(into))
         self.steps.append(step)
         return step
+
+    async def _judged(
+        self, action: Action, p: Prepared, typed: str, error: Fail | None, before: Snapshot | None,
+        judge: Callable[[Snapshot | None], Verdict],
+    ) -> tuple[Snapshot | None, Verdict, Fail | None]:
+        """The screen the action left and its verdict; an unreadable screen keeps the step, unverified, with the reason."""
+        try:
+            after = await self._after(p, typed, error, before)
+            verdict = judge(after)
+            if error is None and _awaits_expectation(action, after, verdict):
+                after, _ = await self._poll(lambda snap: judge(snap).checks, time.monotonic() + EXPECT_WAIT_S, after)
+                verdict = judge(after)
+        except Fail as unread:
+            if unread.kind in _FATAL_KINDS:
+                raise
+            return None, judge(None), error or unread
+        return after, verdict, error
 
     def _mask_if_secret(self, p: Prepared, into: Field) -> bool:
         """Whether the value ``p`` types goes into a secret field; if so, mask it in the log."""

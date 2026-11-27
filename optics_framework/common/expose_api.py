@@ -326,7 +326,11 @@ def _refuse_server_side_reads(name: str, url: str | None, capabilities: dict[str
         raise OpticsError(Code.E0501, f"{name}: a remote session cannot read a device attached to the server; use a stdio MCP server")
     if name == "camera_screenshot" and (url or capabilities.get("url") or "camera_index" in capabilities):
         # The server would fetch any address, or open any of its own cameras, that the caller names.
-        raise OpticsError(Code.E0501, f"{name}: a remote session reads the camera the server sets in WEBCAM_SCREENSHOT_URL")
+        raise OpticsError(
+            Code.E0501,
+            f"{name}: a remote session reads the camera the server sets in WEBCAM_SCREENSHOT_URL",
+            hint="Leave out camera_index and url to use the server's camera, or use a stdio MCP server on the machine the camera is plugged into.",
+        )
     if "profile" in capabilities:
         # A host profile carries the server owner's sign-ins, so only a local stdio client may use one.
         raise OpticsError(Code.E0501, f"{name}: a browser profile works only through a local stdio MCP server")
