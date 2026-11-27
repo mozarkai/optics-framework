@@ -1143,7 +1143,10 @@ class Appium(DriverInterface):
 
     def _show_started_app(self, app: Optional[str]) -> None:
         """An attached session, or autoLaunch off, can leave another app in front of the one the session names."""
-        if app and self._active_platform() in MOBILE and self._front_app(self._require_driver()) != app:
+        if not app or self._active_platform() not in MOBILE:
+            return
+        front = self._front_app(self._require_driver())
+        if front != app and not (front and self._shows_system_prompt(front)):
             self._bring_to_front(app)
 
     def _bring_to_front(self, app: Optional[str]) -> None:
