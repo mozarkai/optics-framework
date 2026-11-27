@@ -839,7 +839,7 @@ async def _run_steps(
             return ran, [*lines, f"{_head(action, None)} -> FAIL", *_fail_lines(failure)], failure
         ran.append(step)
         lines += [_step_head(step), *_step_notes(step, step.prepared.calls[-1].keyword)]
-        if not step.ok:
+        if step.error is not None:
             return ran, [*lines, *_fail_lines(step.error)], step.error
     return ran, lines, None
 

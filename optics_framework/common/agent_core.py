@@ -909,22 +909,35 @@ class AgentSession:
         secret = self._mask_if_secret(p, into)
         result, strategy, error = await self._run_calls(p)
         typed = _value(p.calls, TYPED_VALUE_PARAMS)
-        after = await self._after(p, typed, error, before)
         ok = error is None
 
         def judge(snap: Snapshot | None) -> Verdict:
             return verify(ok, before, snap, action.present, action.absent, typed=typed, strategy=strategy, exact=p.exact)
 
-        verdict = judge(after)
-        if ok and _awaits_expectation(action, after, verdict):
-            after, _ = await self._poll(lambda snap: judge(snap).checks, time.monotonic() + EXPECT_WAIT_S, after)
-            verdict = judge(after)
+        after, verdict, error = await self._judged(action, p, typed, error, before, judge)
         step = Step(action, ok, verdict, before, after, p, result, strategy, error, key, typed, secret)
         if ok:
             self._focus.moved(p.calls[-1].keyword if p.calls else "", named)
             self.recorder.add(len(self.steps) + 1, p, secret, secret_hint(into))
         self.steps.append(step)
         return step
+
+    async def _judged(
+        self, action: Action, p: Prepared, typed: str, error: Fail | None, before: Snapshot | None,
+        judge: Callable[[Snapshot | None], Verdict],
+    ) -> tuple[Snapshot | None, Verdict, Fail | None]:
+        """The screen the action left and its verdict; an unreadable screen keeps the step, unverified, with the reason."""
+        try:
+            after = await self._after(p, typed, error, before)
+            verdict = judge(after)
+            if error is None and _awaits_expectation(action, after, verdict):
+                after, _ = await self._poll(lambda snap: judge(snap).checks, time.monotonic() + EXPECT_WAIT_S, after)
+                verdict = judge(after)
+        except Fail as unread:
+            if unread.kind in _FATAL_KINDS:
+                raise
+            return None, judge(None), error or unread
+        return after, verdict, error
 
     def _mask_if_secret(self, p: Prepared, into: Field) -> bool:
         """Whether the value ``p`` types goes into a secret field; if so, mask it in the log."""
