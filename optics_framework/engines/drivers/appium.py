@@ -584,7 +584,7 @@ class Appium(DriverInterface):
     def _is_android(self, caps: dict[str, Any]) -> bool:
         return normalize_platform(caps.get(self.CAP_PLATFORM_NAME) or caps.get(self.CAP_APPIUM_PLATFORM_NAME)) == ANDROID
 
-    def _hold_launch_for_permissions(self, options: Any, caps: dict[str, Any]) -> Optional[tuple[str, Optional[str]]]:
+    def _hold_launch_for_permissions(self, options: Any, caps: dict[str, Any]) -> Optional[tuple[str, Optional[str], bool]]:
         """On Android, keep the session from opening the app until its permissions are set, so no prompt can come
         first. Returns the package and activity to start afterwards, or None when nothing is held: a caller that
         turned ``autoLaunch`` off launches the app itself, and ``autoWebview`` needs the app open as the session starts."""
@@ -593,13 +593,16 @@ class Appium(DriverInterface):
         if not self._configured_permissions() or not self._is_android(caps) or not package or not auto_launch or _starts_in_web(caps):
             return None
         options.set_capability("appium:autoLaunch", False)
-        return package, caps.get("appActivity") or caps.get("appium:appActivity")
+        activity = caps.get("appActivity") or caps.get("appium:appActivity")
+        return package, activity, caps.get("appWaitForLaunch", caps.get("appium:appWaitForLaunch", True))
 
-    def _start_held_app(self, package: str, activity: Optional[str]) -> None:
+    def _start_held_app(self, package: str, activity: Optional[str], wait: bool) -> None:
         driver = self._require_driver()
         if activity:
             # In front before launch_app checks it, so the check never reopens the package's default activity.
-            driver.execute_script("mobile: startActivity", {"intent": f"{package}/{activity}", "wait": True})
+            driver.execute_script("mobile: startActivity", {"intent": f"{package}/{activity}", "wait": wait})
+            if not wait:
+                self._settled_front(driver, package)
         else:
             driver.activate_app(package)
 
@@ -1521,14 +1524,20 @@ class Appium(DriverInterface):
         """The activate call returns before the app is in front, and some devices report success for an app that closed."""
         if self._active_platform() not in MOBILE:
             return
+        front, settled = self._settled_front(driver, app_id)
+        if not settled:
+            shown = f"'{front}' is in front: the app closed or did not open" if front else "the app in front could not be read"
+            raise OpticsError(Code.E0401, message=f"Launched '{app_id}', but {shown}")
+
+    def _settled_front(self, driver: WebDriver, app_id: str) -> tuple[Optional[str], bool]:
+        """The app in front, and whether it became app_id or a system prompt within the settle time."""
         deadline = time.monotonic() + _LAUNCH_SETTLE_S
         while True:
             front = self._front_app(driver)
             if front is not None and (front == app_id or self._shows_system_prompt(front)):
-                return
+                return front, True
             if time.monotonic() >= deadline:
-                shown = f"'{front}' is in front: the app closed or did not open" if front else "the app in front could not be read"
-                raise OpticsError(Code.E0401, message=f"Launched '{app_id}', but {shown}")
+                return front, False
             time.sleep(_LAUNCH_POLL_S)
 
     @staticmethod
