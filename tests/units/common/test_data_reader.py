@@ -33,6 +33,7 @@ class TestCSVDataReader:
             {"M": [("Is Element", ["${x}", "invisible", "10"])]},
         ),
         ("Element_Name,Element_ID\nok,Ok,OK,text=Ok\n", "read_elements", {"ok": ["Ok", "OK", "text=Ok"]}),
+        ("test_case,test_step\nT,Open,,Check\n", "read_test_cases", {"T": ["Open", "Check"]}),
     ])
     def test_cells_past_the_header_are_kept_in_order(self, tmp_path, content, read, expected):
         assert getattr(self.reader, read)(_write(tmp_path, "f.csv", content)) == expected

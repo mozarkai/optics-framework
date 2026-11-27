@@ -372,16 +372,12 @@ class CSVDataReader(DataReader):
         :return: A dictionary where keys are test case names and values are lists of test steps.
         :rtype: dict
         """
-        rows = self.read_file(file_path)
-        test_cases = {}
-        for row in rows:
+        test_cases: dict = {}
+        for row in self.read_file(file_path):
             test_case = row.get("test_case", "").strip()
-            test_step = row.get("test_step", "").strip()
-            if not test_case or not test_step:
-                continue
-            if test_case not in test_cases:
-                test_cases[test_case] = []
-            test_cases[test_case].append(test_step)
+            steps = [v.strip() for k, v in row.items() if (k == "test_step" or k.startswith("test_step#")) and v.strip()]
+            if test_case and steps:
+                test_cases.setdefault(test_case, []).extend(steps)
         return test_cases
 
     def read_modules(
