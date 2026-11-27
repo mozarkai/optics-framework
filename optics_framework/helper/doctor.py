@@ -188,7 +188,8 @@ def _xa11y_row(home: Path, server_up: bool) -> Check:
         return Check(_XA11Y_DRIVER, "ok", f"{_XA11Y_PACKAGE} {found} in {home}")
     hint = _XA11Y_INSTALL if shutil.which("appium") else f"npm install -g appium, then {_XA11Y_INSTALL}"
     if server_up:
-        return Check(_XA11Y_DRIVER, "warn", f"not found in {home}; the running server may use another APPIUM_HOME",
+        # A tunnelled cloud server, or a local one with its own APPIUM_HOME, has drivers doctor cannot see.
+        return Check(_XA11Y_DRIVER, "info", f"not found in {home}; the running server may have it elsewhere",
                      f"{hint}, or set APPIUM_HOME to the folder the server uses and run optics doctor again")
     return Check(_XA11Y_DRIVER, "warn", f"not installed in {home}", hint)
 
