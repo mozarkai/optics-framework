@@ -1,0 +1,38 @@
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://localhost:4723"
+      capabilities:
+        platformName: Android
+        automationName: UiAutomator2
+        deviceName: emulator-5554
+        appPackage: com.android.settings
+        appActivity: .Settings
+
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_page_source:
+      enabled: true
+  - appium_screenshot:
+      enabled: true
+
+# Natural-language mode for `optics live` (Ctrl-N) and AI self-heal. Enable one engine and
+# install its extra: pip install 'optics-framework[gemini]' (or [openai], [anthropic]).
+# Keys come from capabilities.api_key or the environment; write api_key: ${MY_KEY} to keep them out of this file.
+llm_models:
+  - gemini:
+      enabled: false
+      capabilities:
+        model: gemini-2.5-flash
+  - openai:
+      enabled: false
+      capabilities:
+        model: gpt-5-mini
+  - anthropic:
+      enabled: false
+      capabilities:
+        model: claude-sonnet-5-5
+
+# When every locate strategy fails, an enabled llm_models entry above takes one corrective action.
+ai_self_heal: false

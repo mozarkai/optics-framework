@@ -1,0 +1,8 @@
+module_name,module_step,param_1,param_2,param_3
+Open Settings,Launch App
+Open Settings,Assert Presence,${Search_Settings},20
+Open About Phone,Scroll Until Element Appears,${About_Phone},down,30
+Open About Phone,Press Element,${About_Phone}
+Open About Phone,Assert Presence,${Device_Name},10
+Find The Build Number,Scroll Until Element Appears,${Build_Number},down,30
+Close Settings,Close And Terminate App

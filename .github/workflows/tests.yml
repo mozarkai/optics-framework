@@ -134,8 +134,8 @@ jobs:
         run: poetry install --only main --extras playwright
       - name: Install Chromium
         run: poetry run playwright install chromium
-      - name: Scaffold the Playwright sample
-        run: poetry run optics init demo --template playwright
+      - name: Scaffold the browser sample
+        run: poetry run optics init demo --template browser
       - name: Diagnose the project
         run: poetry run optics doctor demo --check
       - name: Execute the suite

@@ -1,0 +1,5 @@
+test_case,test_step
+Android Suite Setup,Open Settings
+Check About Phone,Open About Phone
+Check About Phone,Find The Build Number
+Android Suite Teardown,Close Settings

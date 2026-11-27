@@ -18,7 +18,7 @@ pytestmark = pytest.mark.black_box
 
 
 def _configured_sample(tmp_path, host, desktop):
-    made = run_optics("init", "notes", "--path", str(tmp_path), "--template", "desktop_editor")
+    made = run_optics("init", "notes", "--path", str(tmp_path), "--template", "mac_local")
     assert made.returncode == 0, made.stdout + made.stderr
     folder = str(tmp_path / "notes")
     write_project_config(folder, started_fresh(render_project_config(

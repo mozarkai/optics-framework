@@ -1,5 +1,0 @@
-test_case,test_step
-Gmail Web Suite Setup,Launch Webpage
-TC1,Gmail Sign In
-TC2,Create Gmail Account
-Gmail Web Suite Teardown,Close Browser

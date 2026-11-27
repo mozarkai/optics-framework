@@ -1,0 +1,4 @@
+test_case,test_step
+Browser Suite Setup,Open Example Page
+Check The Example Page,Verify Example Page
+Browser Suite Teardown,Close Browser
