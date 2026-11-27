@@ -1,5 +1,6 @@
 # Needs Appium 2 with appium-tizen-tv-driver, Tizen Studio (TIZEN_HOME, sdb connect <tv-ip>) and the TV in Developer Mode.
 # Get rcToken once: appium driver run tizentv pair-remote --host <tv-ip>
+# com.birch.tv stands for your own debug-signed app; change appPackage, app and the elements to match it.
 driver_sources:
   - appium:
       enabled: true
@@ -7,6 +8,7 @@ driver_sources:
       capabilities:
         platformName: TizenTV
         appium:automationName: TizenTV
+        appium:deviceName: 192.168.1.50:26101    # the TV as sdb devices lists it
         appium:deviceAddress: 192.168.1.50
         appium:rcToken: "00000000"
         appium:appPackage: com.birch.tv
