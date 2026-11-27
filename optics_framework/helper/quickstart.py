@@ -47,6 +47,9 @@ _TEMPLATE_DOMAINS = {
     "windows_cloud": "desktop",
 }
 
+# The config editor has no TV platform, so its answers would replace these with a phone's settings.
+_CONFIGS_THE_EDITOR_CANNOT_WRITE = {"lg_tv", "samsung_tv"}
+
 
 def run_quickstart() -> None:
     """Run the full guided journey end to end."""
@@ -216,7 +219,7 @@ def _build_config(project_path: str, template: str | None, domain: str) -> None:
         onboarding.blank_line()
         # A device or desktop sample pins one machine's app and server, so its
         # config almost always needs replacing; the browser sample runs as shipped.
-        if not Confirm.ask(
+        if template in _CONFIGS_THE_EDITOR_CANNOT_WRITE or not Confirm.ask(
             f"'{template}' ships its own working config.yaml. Overwrite it "
             "with your own answers?", default=domain != "web"):
             _console.print(f"Keeping the template's config at {config_path}.")
