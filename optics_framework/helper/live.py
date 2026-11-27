@@ -58,6 +58,8 @@ from optics_framework.common.runner.data_reader import (
     CSVDataReader,
     YAMLDataReader,
     DataReader,
+    csv_rows,
+    test_steps,
 )
 from optics_framework.common.runner.step_params import step_arguments, step_candidates
 from optics_framework.common.utils import escape_csv_value
@@ -836,11 +838,11 @@ class LiveController:
 
     @staticmethod
     def _read_rows(path: str) -> List[Dict[str, str]]:
-        """Existing CSV rows as dicts (empty list when the file does not exist)."""
+        """Existing CSV rows as the runner reads them (empty list when the file does not exist)."""
         if not os.path.isfile(path):
             return []
-        with open(path, "r", encoding="utf-8", newline="") as fh:
-            return list(csv.DictReader(fh))
+        with open(path, "r", encoding="utf-8-sig", newline="") as fh:
+            return csv_rows(fh)
 
     def _existing_names(self, path: str, column: str) -> set[str]:
         """Distinct stripped values of ``column`` already present in a CSV."""
@@ -877,7 +879,7 @@ class LiveController:
 
     def _append_test_case_csv(self, path: str, test_case: str, module_name: str) -> None:
         """Append a ``(test_case, module_name)`` step, skipping an exact duplicate row."""
-        rows = self._read_rows(path)
+        rows = [{"test_case": row.get("test_case", ""), "test_step": step} for row in self._read_rows(path) for step in test_steps(row)]
         existing_pairs = {
             ((row.get("test_case") or "").strip(), (row.get("test_step") or "").strip())
             for row in rows

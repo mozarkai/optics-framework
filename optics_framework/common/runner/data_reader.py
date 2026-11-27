@@ -307,10 +307,16 @@ class DataReader(ABC):
         pass
 
 
+def _overflow_name(last_column: str, n: int) -> str:
+    """The n-th column past ``last_column``: ``param_2`` continues as ``param_3``, a column with no number as ``name#1``."""
+    numbered = re.fullmatch(r"(.*?)(\d+)", last_column)
+    return f"{numbered[1]}{int(numbered[2]) + n}" if numbered else f"{last_column}#{n}"
+
+
 def _keep_overflow(row: dict, last_column: str) -> dict:
     """Cells past the header continue its last column, so a step's fourth param needs no param_4 header."""
     for n, value in enumerate(row.pop(None, None) or [], start=1):
-        row[f"{last_column}#{n}"] = value
+        row[_overflow_name(last_column, n)] = value
     return row
 
 
@@ -320,6 +326,11 @@ def csv_rows(lines: Iterable[str]) -> list:
     reader.fieldnames = [h.strip().lower() for h in reader.fieldnames or []]
     last_column = reader.fieldnames[-1] if reader.fieldnames else ""
     return [_keep_overflow(row, last_column) for row in reader]
+
+
+def test_steps(row: dict) -> list[str]:
+    """The non-empty steps of a test_cases row: test_step, then any cells past the header."""
+    return [v.strip() for k, v in row.items() if (k == "test_step" or k.startswith("test_step#")) and v.strip()]
 
 
 def modules_from_rows(rows: list) -> dict:
@@ -375,7 +386,7 @@ class CSVDataReader(DataReader):
         test_cases: dict = {}
         for row in self.read_file(file_path):
             test_case = row.get("test_case", "").strip()
-            steps = [v.strip() for k, v in row.items() if (k == "test_step" or k.startswith("test_step#")) and v.strip()]
+            steps = test_steps(row)
             if test_case and steps:
                 test_cases.setdefault(test_case, []).extend(steps)
         return test_cases
