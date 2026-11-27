@@ -638,12 +638,15 @@ def _appium_problems(caps: dict) -> tuple[list[str], bool]:
     if desktop is not None:
         return desktop
     problems = [f"{key} missing in capabilities" for key in ("deviceName", "platformName") if not _cap(caps, key)]
+    platform = str(_cap(caps, "platformName") or "android").lower()
     # iOS launches apps by bundleId — without one XCUITest has nothing to
     # launch, so it is a hard failure; Android keeps the historical
     # appPackage/appActivity requirements at their existing severity.
-    if str(_cap(caps, "platformName") or "").lower() == "ios":
+    if platform == "ios":
         stops = not _cap(caps, "bundleId")
         return problems + (["bundleId missing in capabilities"] if stops else []), stops
+    if platform != "android" or _cap(caps, "browserName") or _cap(caps, "app"):
+        return problems, False
     return problems + [f"{key} missing in capabilities" for key in ("appPackage", "appActivity") if not _cap(caps, key)], False
 
 
