@@ -746,8 +746,9 @@ class TestRunner(Runner):
             label = f"failure_{test_case}"
             time_stamp = utils.capture_time_stamp()
             utils.save_screenshot(strategy_manager.capture_screenshot(), label, output_dir, time_stamp)
-            page_source, _ = strategy_manager.capture_pagesource()
-            utils.save_page_source_file(mask_secrets(page_source), label, output_dir, time_stamp)
+            if strategy_manager.pagesource_strategies:
+                page_source, _ = strategy_manager.capture_pagesource()
+                utils.save_page_source_file(mask_secrets(page_source), label, output_dir, time_stamp)
         except Exception as e:
             internal_logger.warning("Failure capture for '%s' skipped: %s", test_case, e)
 
@@ -763,6 +764,8 @@ class TestRunner(Runner):
         self, strategy_manager: StrategyManager, output_dir: str | None
     ) -> tuple[Optional[str], Optional[str]]:
         """The final page source for error detection, saved masked only when captures are on."""
+        if not strategy_manager.pagesource_strategies:
+            return None, None
         try:
             page_source, timestamp = strategy_manager.capture_pagesource()
             if output_dir is None:
