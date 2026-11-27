@@ -645,11 +645,13 @@ def _appium_problems(caps: dict) -> tuple[list[str], bool]:
     if platform == "ios":
         stops = not _cap(caps, "bundleId")
         return problems + (["bundleId missing in capabilities"] if stops else []), stops
-    return problems + _android_app_problems(caps, platform), False
+    return problems + _app_problems(caps, platform), False
 
 
-def _android_app_problems(caps: dict, platform: str) -> list[str]:
-    """Only a native Android session opens its app by package and activity; browserName or app starts the others."""
+def _app_problems(caps: dict, platform: str) -> list[str]:
+    """The app a session opens: an LG TV by appId or app, native Android by package and activity unless browserName or app starts it."""
+    if platform == "lgtv":
+        return [] if _cap(caps, "appId") or _cap(caps, "app") else ["appId or app missing in capabilities"]
     if platform != "android" or _cap(caps, "browserName") or _cap(caps, "app"):
         return []
     return [f"{key} missing in capabilities" for key in ("appPackage", "appActivity") if not _cap(caps, key)]
