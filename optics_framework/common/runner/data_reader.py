@@ -315,7 +315,11 @@ def _overflow_name(last_column: str, n: int) -> str:
 
 def _keep_overflow(row: dict, last_column: str) -> dict:
     """Cells past the header continue its last column, so a step's fourth param needs no param_4 header."""
-    for n, value in enumerate(row.pop(None, None) or [], start=1):
+    n = 0
+    for value in row.pop(None, None) or []:
+        n += 1
+        while _overflow_name(last_column, n) in row:
+            n += 1
         row[_overflow_name(last_column, n)] = value
     return row
 
