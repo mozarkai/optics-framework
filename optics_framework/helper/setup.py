@@ -503,8 +503,9 @@ def _run_streaming(cmd: List[str]) -> None:
 
 def install_extras(requests: List[InstallRequest], *, stream: bool = True) -> tuple[bool, str]:
     """Install the selected engine backends by pulling the matching
-    `optics-framework` extras, pinned to the installed version so the CLI is
-    never upgraded out from under the user.
+    `optics-framework` extras, pinned to the installed version (or the git
+    revision it was installed from) so the CLI is never upgraded out from under
+    the user.
 
     A request carrying an explicit ``version`` also adds its primary package as a
     concrete pinned requirement (e.g. ``appium-python-client==6.1.2``); pip
