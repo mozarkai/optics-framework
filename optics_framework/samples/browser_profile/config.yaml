@@ -1,0 +1,18 @@
+# Starts Chrome with a temporary copy of a profile you are signed in to on this computer.
+# profile takes the profile folder (Default, Profile 1), its name or its account email.
+driver_sources:
+  - playwright:
+      enabled: true
+      capabilities:
+        browser: chromium
+        channel: chrome
+        profile: ${OPTICS_BROWSER_PROFILE:-Default}
+        headless: false
+
+elements_sources:
+  - playwright_find_element:
+      enabled: true
+  - playwright_page_source:
+      enabled: true
+  - playwright_screenshot:
+      enabled: true

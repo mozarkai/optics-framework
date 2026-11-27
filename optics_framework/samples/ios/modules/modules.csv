@@ -1,0 +1,10 @@
+module_name,module_step,param_1,param_2,param_3
+Open Settings,Launch App
+Open Settings,Assert Presence,${General},20
+Open About,Press Element,${General}
+Open About,Assert Presence,${About},10
+Open About,Press Element,${About}
+Open About,Assert Presence,${iOS_Version},10
+Back To General,Press Element,${Back_Button}
+Back To General,Assert Presence,${Software_Update},10
+Close Settings,Close And Terminate App

@@ -1,0 +1,10 @@
+module_name,module_step,param_1,param_2
+Open Calculator,Launch App
+Open Calculator,Assert Presence,${Equals},20
+Add Seven And Eight,Press Element,${Clear}
+Add Seven And Eight,Press Element,${Seven}
+Add Seven And Eight,Press Element,${Plus}
+Add Seven And Eight,Press Element,${Eight}
+Add Seven And Eight,Press Element,${Equals}
+Add Seven And Eight,Assert Presence,15,10
+Close Calculator,Close And Terminate App

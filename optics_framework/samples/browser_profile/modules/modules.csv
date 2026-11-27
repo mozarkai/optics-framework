@@ -1,0 +1,4 @@
+module_name,module_step,param_1,param_2
+Open GitHub Settings,Launch App,https://github.com/settings/profile
+Check The Sign In Carried Over,Assert Presence,${Public_Profile},15
+Close Browser,Close And Terminate App

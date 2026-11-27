@@ -1,0 +1,7 @@
+test_case,test_step
+TV Suite Setup,Open Birch TV
+Open A Shoe From The Grid,Open A Shoe With The Remote
+Open A Shoe From The Grid,Back To Home
+Find A Shoe By Search,Search For A Shoe
+Find A Shoe By Search,Back To Home
+TV Suite Teardown,Close Birch TV

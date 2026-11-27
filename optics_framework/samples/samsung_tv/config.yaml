@@ -1,0 +1,20 @@
+# Needs Appium 2 with appium-tizen-tv-driver, Tizen Studio (TIZEN_HOME, sdb connect <tv-ip>) and the TV in Developer Mode.
+# Get rcToken once: appium driver run tizentv pair-remote --host <tv-ip>
+driver_sources:
+  - appium:
+      enabled: true
+      url: "http://localhost:4723"
+      capabilities:
+        platformName: TizenTV
+        appium:automationName: TizenTV
+        appium:deviceAddress: 192.168.1.50
+        appium:rcToken: "00000000"
+        appium:appPackage: com.birch.tv
+        appium:app: /path/to/birch.wgt
+        appium:chromedriverExecutableDir: /path/to/chromedrivers
+
+# A native screenshot stalls a Tizen TV, so there is no appium_screenshot here.
+# To see the screen, add a camera_screenshot source.
+elements_sources:
+  - appium_find_element:
+      enabled: true

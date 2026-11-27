@@ -17,7 +17,7 @@ _optics_completions() {
 
   local subcommands="list configure config doctor quickstart dry_run dry-run init execute live generate setup serve mcp completion"
 
-  local template_options="android browser mac_local mobile_web"
+  local template_options="android android_tv ble_camera ble_usb browser browser_profile ios lg_tv mac_cloud mac_local mobile_web samsung_tv windows_cloud"
   local runner_options="test_runner pytest"
   # Only the two-space-indented lines are engine keys; category headers are not
   # indented, so this needs no per-header filter.

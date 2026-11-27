@@ -26,16 +26,25 @@ _DEFAULT_NAME = "my-optics-project"
 
 # Playwright needs only a browser, so a web user reaches a passing test with no
 # hardware at all.
-_DOMAIN_SAMPLE = {"mobile": "android", "web": "browser", "desktop": "mac_local"}
+_DOMAIN_SAMPLE = {"mobile": "android", "web": "browser", "desktop": "mac_local", "bluetooth": "ble_camera"}
 
 # The engine a domain installs, when the domain is not itself a `setup` bundle.
 _INSTALL_TOKEN = {"desktop": "appium"}
 
 _TEMPLATE_DOMAINS = {
     "android": "mobile",
+    "ios": "mobile",
+    "android_tv": "mobile",
+    "lg_tv": "mobile",
+    "samsung_tv": "mobile",
     "mobile_web": "mobile",
     "browser": "web",
+    "browser_profile": "web",
+    "ble_camera": "bluetooth",
+    "ble_usb": "bluetooth",
     "mac_local": "desktop",
+    "mac_cloud": "desktop",
+    "windows_cloud": "desktop",
 }
 
 

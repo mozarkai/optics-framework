@@ -1,0 +1,4 @@
+test_case,test_step
+Profile Suite Setup,Open GitHub Settings
+Start Signed In,Check The Sign In Carried Over
+Profile Suite Teardown,Close Browser

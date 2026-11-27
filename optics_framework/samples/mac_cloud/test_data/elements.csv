@@ -1,0 +1,6 @@
+Element_Name,Element_ID
+Clear,//button[@id="AllClear"]
+Seven,//button[@id="Seven"]
+Eight,//button[@id="Eight"]
+Plus,//button[@id="Add"]
+Equals,//button[@id="Equals"]

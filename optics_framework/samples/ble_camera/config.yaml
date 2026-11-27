@@ -1,0 +1,25 @@
+# An airhand dongle taps and types over Bluetooth; a webcam aimed at the phone gives the screen.
+# frame must equal out_width x out_height.
+driver_sources:
+  - ble:
+      enabled: true
+      capabilities:
+        platform: ios
+        frame: {width: 1170, height: 2532}
+
+elements_sources:
+  - camera_screenshot:
+      enabled: true
+      capabilities:
+        camera_index: 0
+        find_screen: brightness
+        out_width: 1170
+        out_height: 2532
+
+text_detection:
+  - apple_vision:
+      enabled: true    # rapidocr on Linux and Windows
+
+image_detection:
+  - templatematch:
+      enabled: true

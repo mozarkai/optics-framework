@@ -1,0 +1,19 @@
+# A cloud Mac that runs Appium with appium-xa11y-driver on 127.0.0.1:4723.
+# Appium has no authentication, so reach it through a tunnel, not a public port:
+#   ssh -N -o ExitOnForwardFailure=yes -L 4734:127.0.0.1:4723 user@cloud-mac
+driver_sources:
+  - appium:
+      enabled: true
+      url: ${MAC_APPIUM_URL:-http://127.0.0.1:4734}
+      capabilities:
+        platformName: Mac
+        automationName: Xa11y
+        app: com.apple.calculator
+
+elements_sources:
+  - appium_find_element:
+      enabled: true
+  - appium_page_source:
+      enabled: true
+  - appium_screenshot:
+      enabled: true

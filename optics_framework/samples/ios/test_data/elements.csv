@@ -1,0 +1,6 @@
+Element_Name,Element_ID,Element_ID_2
+General,id:com.apple.settings.general,General
+About,id:com.apple.settings.about,About
+Software_Update,id:com.apple.settings.softwareUpdate,Software Update
+iOS_Version,iOS Version,Software Version
+Back_Button,//XCUIElementTypeNavigationBar/XCUIElementTypeButton[1],General

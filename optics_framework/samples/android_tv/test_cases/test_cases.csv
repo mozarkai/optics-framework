@@ -1,0 +1,5 @@
+test_case,test_step
+Android TV Suite Setup,Open TV Settings
+Check About The TV,Open Device Preferences
+Check About The TV,Open About With The Remote
+Android TV Suite Teardown,Go Back Home
