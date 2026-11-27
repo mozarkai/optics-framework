@@ -1242,6 +1242,17 @@ class StrategyManager:
             return []
         raise last_error
 
+    def _text_rows_or_error(self) -> Tuple[Optional[List[dict]], Optional[Exception]]:
+        """The OCR rows, or the error that stopped them; a camera that cannot see the screen raises as is."""
+        try:
+            return self._read_text_rows(), None
+        except Exception as e:
+            internal_logger.debug(f"OCR read no screen elements: {e}")
+            raise_if_session_dead(e)
+            if _is_blind(e):
+                raise
+            return None, e
+
     def get_interactive_elements(self, filter_config: Optional[List[str]] = None, compact: bool = False) -> List[dict]:
         """Interactive elements of the screen: the first source that lists them, plus what every supplementing source adds."""
         self.require_screen()
@@ -1271,12 +1282,7 @@ class StrategyManager:
             if elements is not None or added:
                 elements = merge_screen_elements(elements or [], added)
         if elements is None and not applicable_strategies and not self.screen_element_supplements:
-            try:
-                elements = self._read_text_rows()
-            except Exception as e:
-                internal_logger.debug(f"OCR read no screen elements: {e}")
-                raise_if_session_dead(e)
-                last_error = e
+            elements, last_error = self._text_rows_or_error()
         if elements is not None:
             return elements
         internal_logger.debug("No interactive elements retrieved.")

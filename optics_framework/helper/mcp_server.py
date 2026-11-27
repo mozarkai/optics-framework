@@ -43,6 +43,7 @@ from optics_framework.common.agent_core import (
     Value,
     as_fail,
     cut,
+    error_hint,
     error_kind,
     error_parts,
     is_read_only,
@@ -148,7 +149,7 @@ _DOCS_PAGES = {
 _FEEDBACK_KINDS = frozenset({"unsupported", "silent_failure", "loop", "other", "session_lost"})
 _FEEDBACK_HINT = " If Optics got this wrong, tell its maintainers with send_feedback."
 _DRIVER_HINT = (
-    'The driver is appium, playwright or selenium. A desktop app uses driver="appium" with '
+    'The driver is appium, playwright, selenium or ble. A desktop app uses driver="appium" with '
     'capabilities {"platformName": "Mac"} (or "Windows", "Linux") and the app name in app.'
 )
 SERVER_INSTRUCTIONS = (
@@ -394,7 +395,8 @@ def _fail_lines(fail: Fail) -> list[str]:
     docs = f" Docs: {DOCS_URL}/{page}" if page else ""
     fact = _fact(fail)
     ask = _FEEDBACK_HINT if fail.kind in _FEEDBACK_KINDS and feedback.enabled() else ""
-    return [f"[{fail.code}] {fact}" if fail.code else fact, f"Next: {ADVICE[fail.kind]}{docs}{ask}"]
+    advice = fail.hint if fail.kind == "other" and fail.hint else ADVICE[fail.kind]
+    return [f"[{fail.code}] {fact}" if fail.code else fact, f"Next: {advice}{docs}{ask}"]
 
 
 def _failure_reply(fail: Fail, more: Sequence[str] = ()) -> Any:
@@ -1028,9 +1030,10 @@ async def _start(driver: str, app: str, config: expose_api.SessionConfig, setup:
         response = await expose_api.create_session(config)
     except HTTPException as exc:
         code, message = error_parts(exc)
-        if code == "E0601":
-            message = f"{message}. {_DRIVER_HINT}"
-        return _failure_reply(Fail(error_kind(code), message, code=code), setup)
+        hint = error_hint(exc)
+        if code == "E0601" and "not found in package" in message:
+            message, hint = f"{message}. {_DRIVER_HINT}", "Start the session again with one of these drivers."
+        return _failure_reply(Fail(error_kind(code), message, code=code, hint=hint), setup)
     except ModuleNotFoundError as exc:
         package = (exc.name or "").split(".")[0]
         return _failure_reply(Fail("unsupported", f"The {driver} driver needs the Python package '{package}'. "

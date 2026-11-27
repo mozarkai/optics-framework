@@ -11,6 +11,7 @@ import pytest
 from optics_framework.common.base_factory import InstanceFallback
 from optics_framework.common.elementsource_interface import ElementSourceInterface
 from optics_framework.common.error import Code, OpticsError
+from optics_framework.common.screen_snapshot import read_screen
 from optics_framework.common.strategies import StrategyManager
 from optics_framework.engines.elementsources import camera_screenshot, webcam as webcam_module
 from optics_framework.engines.elementsources.camera_screenshot import CameraScreenshot
@@ -153,6 +154,21 @@ def test_a_screen_that_stays_off_names_the_cause(camera, phone, monkeypatch):
 class _ReadsNothing:
     def find_element(self, frame, text, index=None):
         return None
+
+    def detect_text(self, frame):
+        return []
+
+
+def test_a_screen_read_names_why_the_camera_cannot_see_the_screen(camera, phone, monkeypatch):
+    monkeypatch.setattr(camera_screenshot, "SCREEN_OFF_SECONDS", 0.3)
+    source = _source(camera, phone, "frame")
+    source.capture()
+    phone.screen_on = False
+    observer = SimpleNamespace(strategy_manager=StrategyManager(InstanceFallback([source]), _ReadsNothing(), None), element_source=source)
+    with pytest.raises(OpticsError) as exc:
+        read_screen(observer)
+    assert exc.value.code == Code.E0305
+    assert "the screen is off" in exc.value.message
 
 
 class _NativeTree(ElementSourceInterface):

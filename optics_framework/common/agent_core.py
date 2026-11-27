@@ -16,7 +16,7 @@ from typing import Any
 from optics_framework.common import utils
 from optics_framework.common.driver_interface import DriverInterface
 from optics_framework.common.utils import substitute_vars, var_refs, whole_var_name
-from optics_framework.common.error import Code, ElementNotFound, OpticsError, is_element_not_found
+from optics_framework.common.error import ERROR_REGISTRY, Code, ElementNotFound, OpticsError, is_element_not_found
 from optics_framework.common.logging_config import (
     is_secret_name,
     register_config_secret,
@@ -115,10 +115,11 @@ class Fail(Exception):
     """A call that cannot go on; ``kind`` is an ``ADVICE`` key and ``message`` the error text as raised."""
 
     def __init__(
-        self, kind: str, fact: str, *, code: str | None = None, message: str = "", rows: Snapshot | None = None
+        self, kind: str, fact: str, *, code: str | None = None, message: str = "", rows: Snapshot | None = None,
+        hint: str | None = None,
     ) -> None:
         super().__init__(fact)
-        self.kind, self.code, self.rows = kind, code, rows
+        self.kind, self.code, self.rows, self.hint = kind, code, rows, hint
         self.message = message or fact
 
 
@@ -204,6 +205,19 @@ def error_parts(exc: BaseException) -> tuple[str | None, str]:
     return (str(code) if code else None), message
 
 
+def error_hint(exc: BaseException) -> str | None:
+    """The next step that an OpticsError, or the HTTP error that wraps one, names itself; never its code's general hint."""
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, dict):
+        code, hint = detail.get("code"), detail.get("hint")
+    elif isinstance(exc, OpticsError):
+        code, hint = exc.code, exc.hint
+    else:
+        return None
+    spec = ERROR_REGISTRY.get(str(code))
+    return None if spec is not None and hint == spec.hint else hint
+
+
 def _says_why(exc: BaseException) -> bool:
     """A miss whose chain names why it missed, such as an invalid XPath or a missing image engine."""
     seen: list[BaseException] = []
@@ -236,7 +250,7 @@ def as_fail(exc: BaseException, keyword: str = "", tried: Sequence[str] = ()) ->
         "session_lost": "the driver session ended.",
         "silent_failure": f"{keyword or 'the keyword'} reported an error: {message}.",
     }
-    return Fail(kind, facts.get(kind, message), code=code, message=message)
+    return Fail(kind, facts.get(kind, message), code=code, message=message, hint=error_hint(exc))
 
 
 def _invalid(hint: str) -> Fail:
