@@ -250,6 +250,7 @@ class _Webcam:
 def webcam(monkeypatch, tmp_path):
     monkeypatch.setenv("OPTICS_HOME", str(tmp_path))
     monkeypatch.setattr(webcam_module, "SETTLE_SECONDS", 0)
+    monkeypatch.setattr(webcam_module, "camera_access", lambda: "authorized")
     monkeypatch.setattr(camera_screenshot, "LENS_SETTLE_SECONDS", 2.5 * LENS_TRAVEL_SECONDS)
     monkeypatch.setenv("WEBCAM_SCREENSHOT_URL", "http://127.0.0.1:1/screenshot")
 
