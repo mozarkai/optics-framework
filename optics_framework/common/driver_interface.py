@@ -346,7 +346,7 @@ class DriverInterface(ABC):
         """Hands the driver a reader of the session's screen rows, or None when nothing reads the screen."""
 
     def apply_brightness(self) -> None:
-        """Sets the screen to the brightness the driver is configured for; a driver without one leaves it as it is."""
+        """Sets the screen to the brightness the driver is configured for, raising only when the session is lost; a driver without one leaves it as it is."""
 
     def popup_screen(self, source: Optional[str]) -> PopupScreen:
         """The popup guard's view of ``source``, this driver's page source or None when it could not be read. A driver that can read popups overrides this."""

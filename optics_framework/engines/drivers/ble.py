@@ -251,16 +251,24 @@ class BLEDriver(DriverInterface):
         internal_logger.info(f"ble host: {chosen.name or chosen.address}")
 
     def apply_brightness(self) -> None:
+        self._brightness_due = False
         steps, level = self.platform.brightness_steps, self.capabilities.brightness
-        if steps is not None and level is not None:
+        if steps is None or level is None:
+            return
+        try:
             with _mapped():
                 # Twice the steps reaches the lowest level from any level, so the presses up always end at the same one.
                 for _ in range(2 * steps):
                     self._dongle.media("brightnessdown")
                 for _ in range(math.floor(level * steps / 100 + 0.5)):
                     self._dongle.media("brightnessup")
-            internal_logger.info(f"Screen brightness set to about {level}%")
-        self._brightness_due = False
+        except OpticsError as exc:
+            if exc.code == Code.E0106:
+                self._brightness_due = True
+                raise
+            internal_logger.warning(f"The screen brightness was not set: {exc}")
+            return
+        internal_logger.info(f"Screen brightness set to about {level}%")
 
     @staticmethod
     def is_dead_session_error(exc: BaseException) -> bool:
@@ -632,13 +640,7 @@ class BLEDriver(DriverInterface):
 
     def _begin_action(self, event_name: Optional[str]) -> None:
         if self._brightness_due:
-            try:
-                self.apply_brightness()
-            except OpticsError as exc:
-                if exc.code == Code.E0106:
-                    raise
-                self._brightness_due = False
-                internal_logger.warning(f"The screen brightness was not set: {exc}")
+            self.apply_brightness()
         if event_name:
             self.event_sdk.capture_event(event_name)
 

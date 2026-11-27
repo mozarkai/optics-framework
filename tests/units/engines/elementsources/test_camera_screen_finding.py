@@ -141,14 +141,10 @@ class _KeysRefused(_Phone):
         raise ValueError(f"no key {keycode}")
 
 
+@pytest.mark.parametrize("phone", [_Phone, _NoBrightnessKeys, _KeysRefused], indirect=True)
 def test_finding_the_screen_by_brightness_leaves_the_phone_at_its_configured_level(camera, phone):
     assert _shows_the_screen(_source(camera, phone, "brightness").capture())
     assert phone.level == CONFIGURED_LEVEL
-
-
-@pytest.mark.parametrize("phone", [_NoBrightnessKeys, _KeysRefused], indirect=True)
-def test_brightness_keys_that_do_nothing_fall_back_to_one_frame(camera, phone):
-    assert _shows_the_screen(_source(camera, phone, "brightness").capture())
 
 
 def test_a_screen_that_stays_off_names_the_cause(camera, phone, monkeypatch):
