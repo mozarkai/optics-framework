@@ -32,6 +32,8 @@ from rich.cells import cell_len
 from rich.text import Text
 
 from optics_framework.common.config_handler import (
+    config_from,
+    is_devices_block,
     load_project_yaml,
     resolve_config_file,
 )
@@ -61,6 +63,7 @@ _PLAYWRIGHT_BROWSER = "playwright browser"
 _SELENIUM_WEBDRIVER = "selenium webdriver"
 _CONFIG_DRIVER = "config: driver"
 _CONFIG_FILE = "config: file"
+_CONFIG_DEVICES = "config: devices"
 _BLE_DONGLE = "ble dongle"
 _BLE_DEVICE = "ble paired device"
 _BLE_HOSTS = "ble hosts"
@@ -72,6 +75,7 @@ _XA11Y_PACKAGE = "appium-xa11y-driver"
 _XA11Y_INSTALL = f"appium driver install --source=npm {_XA11Y_PACKAGE}"
 # The server a local setup starts; the cloud samples reach theirs through a tunnel on another port.
 _LOCAL_APPIUM = {("127.0.0.1", 4723), ("localhost", 4723)}
+_DEFAULT_APPIUM = ("127.0.0.1", 4723)
 _DESKTOP_SYSTEMS = {"mac": "Darwin", "windows": "Windows", "linux": "Linux"}
 _MACOS_PERMISSIONS = "macOS permissions"
 
@@ -391,6 +395,10 @@ def _enabled_entries(section: object) -> dict[str, dict]:
     return enabled
 
 
+def _drivers(stack: dict) -> dict[str, dict]:
+    return _enabled_entries(stack.get("driver_sources"))
+
+
 def _is_enabled(value: object) -> bool:
     """``value`` read with the bool rules ``Config`` applies, so ``enabled: ${USE_APPIUM}`` counts."""
     try:
@@ -399,20 +407,47 @@ def _is_enabled(value: object) -> bool:
         return False
 
 
+def _project(folder: str) -> tuple[dict[str, dict], list[Check]]:
+    """The stack of each device by its identifier (one unnamed stack with no devices block), and the rows about no single device."""
+    data, problem = _load_project_yaml(folder)
+    if problem:
+        return {}, [problem]
+    if not is_devices_block(data.get("devices")):
+        ignored = [Check(_CONFIG_DEVICES, "info", "not a devices block, so the run ignores it",
+                         "A devices block is a map of identifiers, of which one entry at least holds driver_sources.")]
+        return {"": data}, ignored if "devices" in data else []
+    try:
+        config = config_from(data)
+    except OpticsError as exc:
+        return {}, [Check(_CONFIG_FILE, "fail", exc.message, "Correct this value in config.yaml.")]
+    return {identifier: config.for_device(identifier).model_dump() for identifier in config.devices}, []
+
+
 def validate_project(folder: str) -> list[Check]:
     """Lint ``<folder>/config.yaml`` structurally.
 
-    Checks that exactly one driver is enabled, that it has at least one
-    matching ``<driver>_*`` element source, and that the settings needed to
-    open a session are present. Failing rows are what ``run_doctor(check=True)``
+    Checks, for the project or for each device of its devices block, that
+    exactly one driver is enabled, that it has at least one matching
+    ``<driver>_*`` element source, and that the settings needed to open a
+    session are present. Failing rows are what ``run_doctor(check=True)``
     turns into a non-zero exit."""
-    data, problem = _load_project_yaml(folder)
-    if problem:
-        return [problem]
+    stacks, shared = _project(folder)
+    rows = [_named(identifier, row) for identifier, stack in stacks.items() for row in _stack_rows(stack)]
+    if stacks and all(row.status == "ok" for row in rows):
+        rows.append(Check("config: project", "ok",
+                          "driver, element sources and settings look runnable"))
+    return rows + shared
 
+
+def _named(identifier: str, row: Check) -> Check:
+    """``row`` under its device's identifier in place of ``config``."""
+    return row._replace(name=f"{identifier}: {row.name.removeprefix('config: ')}") if identifier else row
+
+
+def _stack_rows(stack: dict) -> list[Check]:
     rows: list[Check] = []
-    drivers = _enabled_entries(data.get("driver_sources"))
-    sources = set(_enabled_entries(data.get("elements_sources")))
+    drivers = _drivers(stack)
+    sources = set(_enabled_entries(stack.get("elements_sources")))
     if not drivers:
         rows.append(Check(
             _CONFIG_DRIVER, "fail", "no driver enabled",
@@ -429,10 +464,6 @@ def validate_project(folder: str) -> list[Check]:
     for driver, cfg in sorted(drivers.items()):
         rows.append(_source_row(driver, sources))
         rows.append(_settings_row(driver, cfg))
-
-    if all(row.status == "ok" for row in rows):
-        rows.append(Check("config: project", "ok",
-                          "driver, element sources and settings look runnable"))
     return rows
 
 
@@ -624,17 +655,9 @@ def check_usb_screen(usb_caps: dict | None, ble_caps: dict | None) -> list[Check
     return [Check(_USB_SCREEN, "ok", f"{width}x{height} from {source.serial}")]
 
 
-def _usb_caps(folder: str | None) -> dict | None:
-    data, _ = _load_project_yaml(folder) if folder else (None, None)
-    cfg = _enabled_entries((data or {}).get("elements_sources")).get("usb_screenshot")
-    return None if cfg is None else cfg.get("capabilities") or {}
-
-
-def _ble_caps(folder: str | None) -> dict | None:
-    data, _ = _load_project_yaml(folder) if folder else (None, None)
-    if data is None:
-        return None
-    cfg = _enabled_entries(data.get("driver_sources")).get("ble")
+def _enabled_caps(stack: dict, section: str, name: str) -> dict | None:
+    """The capabilities of the enabled ``name`` entry of a stack's ``section``, None when the stack enables none."""
+    cfg = _enabled_entries(stack.get(section)).get(name)
     return None if cfg is None else cfg.get("capabilities") or {}
 
 
@@ -685,27 +708,13 @@ def _engine_row_names_by_driver() -> dict[str, str]:
     return {engine.extra: engine.name for engine in ALL_ENGINES.values()}
 
 
-def _enabled_driver_names(folder: str) -> set[str]:
-    """Names of the drivers the project's config enables (empty when there is
-    no readable config — e.g. a bare `optics doctor` with no folder)."""
-    data, _ = _load_project_yaml(folder)
-    if data is None:
-        return set()
-    return set(_enabled_entries(data.get("driver_sources")))
-
-
-def _mandatory_hints(rows: list[Check], drivers: set[str], target: str = "android") -> list[str]:
+def _mandatory_hints(rows: list[Check], required: set[str]) -> list[str]:
     """Hints of warnings on an ENABLED driver's must-have pieces.
 
     A warning for something the user never enabled (say, Playwright's browser
     while they drive Appium) is an optional extra; a warning for their own
     driver's server/device/browser blocks the first real run and gets called
-    out in the closing message. Order follows the rows, deduplicated. An
-    enabled driver's missing Python client blocks just as hard — the server can
-    be up and the device attached, and the run still fails on instantiation.
-    An attached adb device is a must-have only when the project drives Android,
-    and the xa11y driver only when it drives a desktop."""
-    required = _required_rows(drivers, target)
+    out in the closing message. Order follows the rows, deduplicated."""
     hints: list[str] = []
     for row in rows:
         if row.name in required and row.status == "warn" and row.hint and row.hint not in hints:
@@ -713,12 +722,19 @@ def _mandatory_hints(rows: list[Check], drivers: set[str], target: str = "androi
     return hints
 
 
-def _required_rows(drivers: set[str], target: str) -> set[str]:
+def _required_rows(stack: dict) -> set[str]:
+    """The rows one stack cannot run without.
+
+    An enabled driver's missing Python client blocks as hard as its server:
+    the server can be up and the device attached, and the run still fails on
+    instantiation. An attached adb device is a must-have only when the stack
+    drives Android, and the xa11y driver only when it drives a desktop."""
+    drivers = set(_drivers(stack))
     engine_rows = _engine_row_names_by_driver()
     required = {engine_rows[driver] for driver in drivers if driver in engine_rows}
     required.update(name for driver, names in _DRIVER_ROW_NAMES.items() if driver in drivers for name in names)
     if "appium" in drivers:
-        required.update((_APPIUM_SERVER, *_target_rows().get(target, ())))
+        required.update((_APPIUM_SERVER, *_target_rows().get(_appium_platform(stack), ())))
     return required
 
 
@@ -728,34 +744,23 @@ def _target_rows() -> dict[str, tuple[str, ...]]:
     return {"android": (_ADB, _ADB_DEVICES), **{name: (_XA11Y_DRIVER,) for name in desktops}}
 
 
-def _appium_entry(folder: str) -> dict | None:
-    data, _ = _load_project_yaml(folder)
-    if data is None:
-        return None
-    cfg = _enabled_entries(data.get("driver_sources")).get("appium")
-    return cfg if isinstance(cfg, dict) else None
-
-
-def _appium_platform(folder: str) -> str:
-    """The project's appium platformName, lower case; a project with no platformName gets the Android checks."""
-    caps = _promoted((_appium_entry(folder) or {}).get("capabilities") or {})
+def _appium_platform(stack: dict) -> str:
+    """The stack's appium platformName, lower case; a stack with no platformName gets the Android checks."""
+    caps = _promoted(_drivers(stack).get("appium", {}).get("capabilities") or {})
     return str(_cap(caps, "platformName") or "android").strip().lower()
 
 
-def _appium_target(folder: str) -> tuple[str, int] | None:
-    """(host, port) of the project's enabled appium url, or None when the
-    project doesn't drive appium (or its url is unusable)."""
-    cfg = _appium_entry(folder)
-    return _split_host_port(cfg.get("url")) if cfg is not None else None
+def _appium_sessions(stacks: dict[str, dict]) -> list[tuple[tuple[str, int], str]]:
+    """The server address and the platform of each stack that drives appium, each pair once; a local Android device with none."""
+    sessions = [(_split_host_port(_drivers(stack)["appium"].get("url")) or _DEFAULT_APPIUM, _appium_platform(stack))
+                for stack in stacks.values() if "appium" in _drivers(stack)]
+    return list(dict.fromkeys(sessions)) or [(_DEFAULT_APPIUM, "android")]
 
 
-def _playwright_is_remote(folder: str | None) -> bool:
-    """Whether an enabled playwright driver entry carries a url, so the browser is remote."""
-    data, _ = _load_project_yaml(folder) if folder else (None, None)
-    if data is None:
-        return False
-    cfg = _enabled_entries(data.get("driver_sources")).get("playwright")
-    return isinstance(cfg, dict) and bool(cfg.get("url"))
+def _playwright_is_remote(stacks: dict[str, dict]) -> bool:
+    """Whether each enabled playwright driver entry carries a url, so no stack needs a browser on this machine."""
+    urls = [_drivers(stack)["playwright"].get("url") for stack in stacks.values() if "playwright" in _drivers(stack)]
+    return bool(urls) and all(urls)
 
 
 def _split_host_port(url: object) -> tuple[str, int] | None:
@@ -857,32 +862,15 @@ class Diagnosis(NamedTuple):
 def diagnose(folder: str | None = None) -> Diagnosis:
     """Run every check and collect the result without printing anything.
 
-    With ``folder``, the Appium probe targets that project's enabled appium
-    url (falling back to 127.0.0.1:4723) and ``validate_project`` rows are
-    appended.
+    With ``folder``, the Appium probe targets the enabled appium url of the
+    project, or of each device of its devices block (falling back to
+    127.0.0.1:4723), and ``validate_project`` rows are appended.
 
     Without ``folder``, the diagnosed folder is the current directory: when it
     holds no config.yaml a ⚠️ row says so (a warning, never a --check
     failure)."""
-    host, port = "127.0.0.1", 4723
-    if folder:
-        address = _appium_target(folder)
-        if address:
-            host, port = address
-    target = _appium_platform(folder) if folder else "android"
-    sections: list[tuple[str, list[Check]]] = [
-        ("Core", check_core()),
-        ("Engines", check_engines()),
-        ("Mobile", check_mobile(host, port)),
-        ("Desktop", check_desktop(host, port, target=target)),
-        ("Web", check_web(_playwright_is_remote(folder))),
-    ]
-    ble_caps = _ble_caps(folder)
-    usb_rows = check_usb_screen(_usb_caps(folder), ble_caps)
-    if ble_caps is not None:
-        sections.append(("Bluetooth", check_ble(ble_caps) + usb_rows))
-    elif usb_rows:
-        sections.append(("Screen over USB", usb_rows))
+    stacks = _project(folder)[0] if folder else {}
+    sections = [("Core", check_core()), ("Engines", check_engines()), *_machine_sections(stacks)]
     if folder:
         sections.append(("Project", validate_project(folder)))
     elif not os.path.isfile(os.path.join(os.getcwd(), "config.yaml")):
@@ -890,11 +878,37 @@ def diagnose(folder: str | None = None) -> Diagnosis:
                                            "No config.yaml found here",
                                            _NO_CONFIG_HINT)]))
     rows = [row for _, section_rows in sections for row in section_rows]
-    drivers = _enabled_driver_names(folder) if folder else set()
+    required = set().union(*map(_required_rows, stacks.values()))
     # Hints read the raw row names, so a secret that matches a name cannot hide a blocking warning.
-    blocking = [_literal(hint) for hint in _mandatory_hints(rows, drivers, target)]
+    blocking = [_literal(hint) for hint in _mandatory_hints(rows, required)]
     sections = [(title, [_literal_check(row) for row in section_rows]) for title, section_rows in sections]
     return Diagnosis(sections, blocking, any(row.status == "fail" for row in rows))
+
+
+def _machine_sections(stacks: dict[str, dict]) -> list[tuple[str, list[Check]]]:
+    """The checks of this machine for what the stacks drive; with no stack, for a local Android device."""
+    sessions = _appium_sessions(stacks)
+    (host, port), *others = dict.fromkeys(address for address, _ in sessions)
+    desktops = [session for session in sessions if session[1] in _DESKTOP_SYSTEMS] or sessions[:1]
+    desktop_rows = [row for (desktop_host, desktop_port), target in desktops
+                    for row in check_desktop(desktop_host, desktop_port, target=target)]
+    bluetooth: list[Check] = []
+    usb_only: list[Check] = []
+    for stack in stacks.values():
+        ble_caps = _enabled_caps(stack, "driver_sources", "ble")
+        usb_rows = check_usb_screen(_enabled_caps(stack, "elements_sources", "usb_screenshot"), ble_caps)
+        if ble_caps is None:
+            usb_only += usb_rows
+        else:
+            bluetooth += check_ble(ble_caps) + usb_rows
+    sections = [
+        ("Mobile", check_mobile(host, port) + [_appium_row(*address) for address in others]),
+        ("Desktop", list(dict.fromkeys(desktop_rows))),
+        ("Web", check_web(_playwright_is_remote(stacks))),
+        ("Bluetooth", bluetooth),
+        ("Screen over USB", usb_only),
+    ]
+    return [section for section in sections if section[1]]
 
 
 def _literal(text: str) -> str:

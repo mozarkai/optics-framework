@@ -1,6 +1,8 @@
 """config.yaml with a devices block: a wrong block stops the run and names what to fix, and other YAML keeps its meaning."""
 import pytest
 
+from optics_framework.common.config_handler import config_from
+
 pytestmark = pytest.mark.black_box
 
 BROWSER = """
@@ -52,7 +54,7 @@ def test_a_command_that_runs_one_device_refuses_a_devices_block(project, cli, co
     (project / "config.yaml").write_text(SHARED + "devices:\n  PH1:" + BROWSER + "  PH2:" + BROWSER)
     result = cli(command, str(project))
     assert result.returncode != 0
-    assert "has a devices block" in " ".join((result.stdout + result.stderr).split())
+    assert "has a devices block" in " ".join((result.stdout + result.stderr).replace("│", " ").split())
 
 
 @pytest.mark.parametrize(("file", "devices"), [
@@ -64,3 +66,16 @@ def test_a_devices_key_that_is_not_a_devices_block_keeps_its_old_meaning(project
     with (project / file).open("a") as target:
         target.write(devices)
     assert dry_run(project).returncode == 0
+
+
+def test_a_device_config_is_its_entry_over_the_shared_settings_and_shares_nothing():
+    def source(name):
+        return [{name: {"enabled": True}}]
+    config = config_from({"elements_sources": source("playwright_find_element"), "text_detection": source("easyocr"), "devices": {
+        "PH1": {"driver_sources": source("playwright"), "text_detection": source("rapidocr"), "values": {"pin": "0123"}},
+        "PH2": {"driver_sources": source("selenium")}}})
+    phone = config.for_device("PH1")
+    phone.elements_sources[0]["playwright_find_element"].capabilities["headless"] = True
+    assert [list(section[0]) for section in (phone.driver_sources, phone.elements_sources, phone.text_detection)] == [
+        ["playwright"], ["playwright_find_element"], ["rapidocr"]]
+    assert (phone.devices, config.for_device("PH2").elements_sources[0]["playwright_find_element"].capabilities) == ({}, {})

@@ -382,6 +382,12 @@ class Config(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    def for_device(self, identifier: str) -> "Config":
+        """The config of one device of the ``devices`` block: its entry laid over the top-level settings."""
+        own = {field: value for field, value in self.devices[identifier] if field != "values" and value is not None}
+        # A session changes its config, so the deep copy leaves no list or mapping shared between two devices.
+        return self.model_copy(update={**own, "devices": {}}).model_copy(deep=True)
+
     @property
     def capture_dir(self) -> Optional[str]:
         """Where screenshots, page sources and other screen captures go; None when captures are off."""
