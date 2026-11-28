@@ -14,6 +14,7 @@ from optics_framework.common.session_liveness import raise_if_session_dead
 
 # E0601: a popup rule names a module this session does not have, so the screen was never checked.
 _POPUP_ENDS = (*POPUP_STOPS, Code.E0601)
+_GONE_POLL_S = 0.5
 
 
 def _is_miss(error: OpticsError) -> bool:
@@ -84,7 +85,7 @@ class Verifier:
         :param element_state: The state to verify (visible, invisible, enabled, disabled, checked, unchecked).
             On the web, an element marked ``aria-disabled="true"`` counts as disabled and
             ``aria-checked`` counts for checked.
-        :param timeout: The time to wait for the element in seconds.
+        :param timeout: Seconds to wait for the element to show (visible) or to go (invisible).
         :param event_name: The name of the event associated with the check, if any.
         """
         state = element_state.strip().lower()
@@ -101,15 +102,24 @@ class Verifier:
         if event_name:
             self.event_sdk.capture_event(event_name)
 
-    def _check_visibility(self, element: str, state: str, timeout: int) -> None:
-        seconds = int(timeout)
+    def _present(self, element: str, seconds: float) -> bool:
         try:
-            present = self._popup_step("is_element", element, lambda: self._assert_common(
+            return self._popup_step("is_element", element, lambda: self._assert_common(
                 element, seconds, "any", None, False, method_name="assert_presence"))
         except OpticsError as e:
             if e.code in _POPUP_ENDS:
                 raise
-            present = False
+            return False
+
+    def _check_visibility(self, element: str, state: str, timeout: int) -> None:
+        seconds = int(timeout)
+        if state == "visible":
+            present = self._present(element, seconds)
+        else:
+            # A screen that is still scrolling or changing shows the element for a moment, so wait for it to go.
+            deadline = time.monotonic() + seconds
+            while (present := self._present(element, 0)) and time.monotonic() < deadline:
+                time.sleep(min(_GONE_POLL_S, max(0.0, deadline - time.monotonic())))
         if state == "visible" and not present:
             raise OpticsError(Code.E0401, message=f"Element '{element}' is not visible.")
         if state == "invisible" and present:
