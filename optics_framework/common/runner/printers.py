@@ -35,6 +35,7 @@ class KeywordResult(BaseModel):
 
 
 class ModuleResult(BaseModel):
+    id: str = ""
     name: str
     elapsed: str
     status: str

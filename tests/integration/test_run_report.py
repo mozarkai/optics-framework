@@ -119,6 +119,15 @@ def test_only_a_name_ending_in_setup_or_teardown_wraps_the_tests(tmp_path):
     ]
 
 
+def test_a_module_listed_twice_in_a_test_case_runs_twice(tmp_path):
+    passed, cases, _ = _run(tmp_path, "TC One,Pass\nTC One,Pass\n")
+    assert passed is True
+    assert [
+        (module.get("name"), module.get("status"), [keyword.get("status") for keyword in module.findall("kw")])
+        for module in cases["TC One"].findall("kw")
+    ] == [("Pass", "PASS", ["PASS"]), ("Pass", "PASS", ["PASS"])]
+
+
 @pytest.mark.parametrize("test_cases, kind", [
     ("Suite Setup,Pass\nWeb Suite Setup,Pass\nTC One,Pass\n", "suite setup"),
     ("Login Setup,Pass\nCart Setup,Pass\nTC One,Pass\n", "test setup"),

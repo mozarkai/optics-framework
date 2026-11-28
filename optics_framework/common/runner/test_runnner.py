@@ -283,6 +283,7 @@ class TestRunner(Runner):
             current_module = test_case_node.modules_head
             while current_module:
                 module_result = ModuleResult(
+                    id=current_module.id,
                     name=current_module.name,
                     elapsed="0.00s",
                     status="NOT_RUN",
@@ -347,16 +348,16 @@ class TestRunner(Runner):
     def _find_result(
         self,
         test_case_name: str,
-        module_name: Optional[str] = None,
+        module: Optional[ModuleNode] = None,
         keyword_id: Optional[str] = None,
     ) -> TestCaseResult | ModuleResult | KeywordResult:
         test_result = self.result_printer.test_state.get(test_case_name)
         if not test_result:
             raise ValueError(f"Test case {test_case_name} not found in test_state")
-        if module_name is None:
+        if module is None:
             return test_result
         for module_result in test_result.modules:
-            if module_result.name == module_name:
+            if module_result.id == module.id:
                 if keyword_id is None:
                     return module_result
                 for keyword_result in module_result.keywords:
@@ -366,9 +367,9 @@ class TestRunner(Runner):
                         )
                         return keyword_result
                 raise ValueError(
-                    f"Keyword id {keyword_id} not found in module {module_name}"
+                    f"Keyword id {keyword_id} not found in module {module.name}"
                 )
-        raise ValueError(f"Module {module_name} not found in test_state")
+        raise ValueError(f"Module {module.name} not found in test_state")
 
     def _step_resolves(self, module_name: str) -> bool:
         definition = (
@@ -481,7 +482,7 @@ class TestRunner(Runner):
         should_retry = False
         try:
             keyword_result = self._find_result(
-                test_case_result.name, module_node.name, keyword_node.id
+                test_case_result.name, module_node, keyword_node.id
             )
             internal_logger.debug(
                 "Executing keyword: %s (id: %s)", keyword_node.name, keyword_node.id
@@ -816,7 +817,7 @@ class TestRunner(Runner):
         test_case_result: TestCaseResult,
         extra: Dict[str, str],
     ) -> bool:
-        module_result = self._find_result(test_case_result.name, module_node.name)
+        module_result = self._find_result(test_case_result.name, module_node)
         start_time = time.time()
         module_node.state = State.RUNNING
         await self._send_event(
@@ -1039,7 +1040,7 @@ class TestRunner(Runner):
         test_case_result: TestCaseResult,
         testcase_id: str,
     ) -> bool:
-        module_result = self._find_result(test_case_result.name, module_node.name)
+        module_result = self._find_result(test_case_result.name, module_node)
         start_time = time.time()
         module_node.state = State.RUNNING
         await self._send_event(
@@ -1074,7 +1075,7 @@ class TestRunner(Runner):
         keyword_current = module_node.keywords_head
         while keyword_current:
             keyword_result = self._find_result(
-                test_case_result.name, module_node.name, keyword_current.id
+                test_case_result.name, module_node, keyword_current.id
             )
             keyword_current.state = State.RUNNING
             await self._send_event(
