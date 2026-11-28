@@ -317,6 +317,7 @@ class Optics:
             raise ValueError(
                 "Optics config is not set. Call setup() with a valid config before creating a session."
             )
+        self.quit()
         try:
             self.session_id = self.session_manager.create_session(
                 self.config,

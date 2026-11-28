@@ -40,6 +40,13 @@ def test_setup_from_file_keeps_every_config_key(tmp_path):
     optics.quit()
 
 
+def test_a_second_setup_ends_the_first_session(optics):
+    first = optics.session_id
+    optics.setup(config=APPIUM_ONLY)
+    assert optics.session_id != first
+    assert list(optics.session_manager.sessions) == [optics.session_id]
+
+
 def test_api_token_and_otp_flow(mock_api_server, optics):
     optics.add_api(_load_api_yaml_pointed_at(mock_api_server))
     optics.invoke_api("mock.token")
