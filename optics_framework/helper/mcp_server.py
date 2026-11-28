@@ -146,6 +146,7 @@ _DOCS_PAGES = {
     "other": "docs/reference/errors.md",
 }
 # Failures where Optics itself may be at fault, so its maintainers want to hear about them.
+_OWN_HINT_KINDS = frozenset({"other", "unsupported"})
 _FEEDBACK_KINDS = frozenset({"unsupported", "silent_failure", "loop", "other", "session_lost"})
 _FEEDBACK_HINT = " If Optics got this wrong, tell its maintainers with send_feedback."
 _DRIVER_HINT = (
@@ -395,7 +396,7 @@ def _fail_lines(fail: Fail) -> list[str]:
     docs = f" Docs: {DOCS_URL}/{page}" if page else ""
     fact = _fact(fail)
     ask = _FEEDBACK_HINT if fail.kind in _FEEDBACK_KINDS and feedback.enabled() else ""
-    advice = fail.hint if fail.kind == "other" and fail.hint else ADVICE[fail.kind]
+    advice = fail.hint if fail.kind in _OWN_HINT_KINDS and fail.hint else ADVICE[fail.kind]
     return [f"[{fail.code}] {fact}" if fail.code else fact, f"Next: {advice}{docs}{ask}"]
 
 

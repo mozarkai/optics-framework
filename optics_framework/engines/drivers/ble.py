@@ -67,6 +67,7 @@ NEW_SCREEN = 0.5
 SAME_SCREEN = 0.8
 # Scrolls of about 0.65 screens each; an app list of 300 apps is about 12.
 LIST_SCROLLS = 15
+_REFUSAL_HINTS = {"go_back": "This device has no Back key; tap the app's own back control, usually at the top left of the screen."}
 
 
 @dataclass(frozen=True)
@@ -597,7 +598,7 @@ class BLEDriver(DriverInterface):
 
     def _require(self, capability: str) -> None:
         if not self.supports(capability):
-            self._unsupported(capability)
+            self._unsupported(capability, _REFUSAL_HINTS.get(capability))
 
     def _to_fractions(self, x: float, y: float) -> tuple[float, float]:
         frame = self.capabilities.frame

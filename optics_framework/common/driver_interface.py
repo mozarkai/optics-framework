@@ -336,10 +336,11 @@ class DriverInterface(ABC):
         """Whether this driver's ``capability`` method can run in the session, so agents are offered only what works."""
         return not _only_refuses(getattr(type(self), capability))
 
-    def _unsupported(self, capability: str) -> NoReturn:
+    def _unsupported(self, capability: str, hint: Optional[str] = None) -> NoReturn:
         raise OpticsError(
             Code.E0105,
             message=f"'{capability}' is not supported by the {type(self).__name__} driver.",
+            hint=hint,
         )
 
     def attach_screen(self, read: Optional[Callable[[], list[dict]]]) -> None:

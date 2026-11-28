@@ -101,6 +101,16 @@ def test_ios_closes_an_app_from_the_app_switcher(plugged):
     ]
 
 
+def test_ios_go_back_says_what_to_tap_instead(plugged):
+    fake = plugged()
+    driver = make_driver(fake, "ios")
+    with pytest.raises(OpticsError) as refused:
+        driver.go_back()
+    assert refused.value.code == Code.E0105
+    assert "tap the app's own back control" in refused.value.hint
+    assert fake.commands == []
+
+
 def test_a_computer_scrolls_with_the_wheel(plugged):
     fake = plugged()
     driver = make_driver(fake, "linux")
