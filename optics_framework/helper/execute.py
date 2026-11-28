@@ -13,7 +13,9 @@ import yaml
 from pydantic import BaseModel, field_validator
 from pathlib import Path
 from optics_framework.api import ActionKeyword, AppManagement, Verifier
-from optics_framework.common.config_handler import Config, DependencyConfig, config_from, load_project_yaml, resolve_config_file
+from optics_framework.common.config_handler import (
+    Config, DependencyConfig, config_from, is_devices_block, load_project_yaml, resolve_config_file,
+)
 from optics_framework.common.logging_config import console_logs_to_stderr, internal_logger, initialize_handlers
 from optics_framework.common.runner.data_reader import (
     CSVDataReader,
@@ -198,9 +200,11 @@ def _try_load_config_from_yaml(file_path: str, current_config: Config | None, fo
 
 def _is_config_file(yaml_data: dict) -> bool:
     """Check if YAML data represents a configuration file."""
-    return (isinstance(yaml_data, dict) and
-            "driver_sources" in yaml_data and
-            ("element_sources" in yaml_data or "elements_sources" in yaml_data))
+    if not isinstance(yaml_data, dict):
+        return False
+    if is_devices_block(yaml_data.get("devices")):
+        return True
+    return "driver_sources" in yaml_data and ("element_sources" in yaml_data or "elements_sources" in yaml_data)
 
 
 def _process_csv_file(file_path: str, file_collections: dict):
@@ -898,8 +902,13 @@ class BaseRunner:
         ], error.code.value, status=3)
 
     def _setup_session(self):
+        config_path = os.path.join(self.folder_path, "config.yaml")
+        if self.config.devices:
+            abort_with_panel([
+                f"{config_path} has a devices block ({', '.join(self.config.devices)}).",
+                "optics execute and optics dry_run run one device and cannot run a devices block yet.",
+            ], Code.E0501.value)
         if not self._has_enabled_driver() and self._needs_driver():
-            config_path = os.path.join(self.folder_path, "config.yaml")
             abort_with_panel([
                 f"No driver enabled in {config_path}.",
                 f"Run `optics configure {self.folder_path}`, then re-run.",

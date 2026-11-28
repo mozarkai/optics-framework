@@ -420,6 +420,8 @@ def _invalid_field(problem: Any, data: Any, path: str) -> str:
         else:
             path = str(key)
     reason = problem["msg"].removeprefix("Value error, ")
+    if not path:
+        return reason
     value = problem.get("input")
     shown = problem["type"] != "missing" and isinstance(value, (str, int, float, bool))
     return f"{path}: {reason} (got {value!r})" if shown else f"{path}: {reason}"

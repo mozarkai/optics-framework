@@ -43,3 +43,15 @@ def test_from_needs_a_json_object_and_keeps_its_value_out_of_the_error(monkeypat
     with pytest.raises(OpticsError, match=r"\$from: \$CAPS") as error:
         resolve_config_file({"capabilities": {"$from": "$CAPS"}}, folder)
     assert "secret" not in error.value.message
+
+
+def test_a_device_entry_resolves_as_the_top_level_does(env, tmp_path):
+    browser = {"enabled": True, "url": "wss://$HUB", "capabilities": {"browser": "$HUB"}}
+    entry = {"driver_sources": [{"playwright": browser}], "element_sources": [{"playwright_find_element": {"enabled": True}}],
+             "values": {"username": "rider@$HUB", "folder": "./not-a-file"}}
+    resolved = resolve_config_file({"devices": {"PH1": entry}}, str(tmp_path))
+    assert resolved["devices"]["PH1"] == {
+        "driver_sources": [{"playwright": {"enabled": True, "url": "wss://$HUB", "capabilities": {"browser": "hub.example.com"}}}],
+        "elements_sources": [{"playwright_find_element": {"enabled": True}}],
+        "values": {"username": "rider@hub.example.com", "folder": "./not-a-file"},
+    }

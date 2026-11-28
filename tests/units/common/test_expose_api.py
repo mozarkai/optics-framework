@@ -54,6 +54,13 @@ def session():
     expose_api.session_manager.terminate_session(session_id)
 
 
+def test_a_start_call_with_a_devices_block_is_refused(client):
+    browser = {"driver_sources": [{"playwright": {"enabled": True}}]}
+    resp = client.post("/v1/sessions/start", json={"driver_sources": ["playwright"], "devices": {"PH1": browser, "PH2": browser}})
+    assert resp.status_code == 422
+    assert "a session drives one device" in resp.text
+
+
 def test_stopping_a_session_that_does_not_exist_is_not_found(client):
     resp = client.delete("/v1/sessions/missing/stop")
     assert (resp.status_code, resp.json()["detail"]) == (404, expose_api.SESSION_NOT_FOUND)

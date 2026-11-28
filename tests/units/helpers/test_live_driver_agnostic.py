@@ -59,6 +59,19 @@ popup_rules:
         assert "popup_rules['Rate Us'].action.type" in error
         assert "'swipe'" in error
 
+    def test_optics_live_refuses_a_devices_block(self, capsys):
+        d = _project("""
+elements_sources:
+  - playwright_find_element: {enabled: true}
+devices:
+  PH1:
+    driver_sources:
+      - playwright: {enabled: true}
+""")
+        with pytest.raises(SystemExit):
+            live_mod.live_main(d)
+        assert "has a devices block (PH1)" in " ".join(capsys.readouterr().err.split())
+
 
 def _shell(driver: str, caps: dict) -> LiveController:
     """A LiveController shell with just enough state for the driver-type helpers."""

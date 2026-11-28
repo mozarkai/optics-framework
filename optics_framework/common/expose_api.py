@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Literal, Optional, Dict, Any, List, cast, Callable, Tuple, NamedTuple
 from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi import status
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 from sse_starlette.sse import EventSourceResponse
 from optics_framework.common.session_manager import SessionManager, Session
 from optics_framework.common.models import ApiData, ElementData, ModuleData, parse_popup_rules
@@ -28,7 +28,7 @@ from optics_framework.common.http_guard import add_http_guards
 from optics_framework.common.image_decode import image_size
 from optics_framework.common import fallback
 from optics_framework.common.error import OpticsError, Code, plain
-from optics_framework.common.config_handler import Config, DependencyConfig, env_names
+from optics_framework.common.config_handler import Config, DependencyConfig, env_names, is_devices_block
 from optics_framework.common.caller_policy import refuse_local_capabilities
 from optics_framework.common.runner.data_reader import csv_rows, elements_from_rows, modules_from_rows
 from optics_framework.common.runner.event_stream import OutputMode
@@ -388,6 +388,13 @@ class SessionConfig(BaseModel):
     elements_csv: str = ""  # Element_Name,Element_ID rows those modules name
     permissions: Dict[str, Literal["allow", "deny"]] = {}  # Android only, applied as the session starts
     api_data: Optional[Dict[str, Any]] = None  # Inline API definitions only; file path not supported in REST
+
+    @model_validator(mode="before")
+    @classmethod
+    def _one_device(cls, data: Any) -> Any:
+        if isinstance(data, dict) and is_devices_block(data.get("devices")):
+            raise ValueError("devices: a session drives one device; a devices block cannot start several sessions yet")
+        return data
 
     def _normalize_item(self, item: str | Dict[str, Any], top_level_url: Optional[str] = None, top_level_capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, DependencyConfig]:
         """Normalize a single source item into {name: DependencyConfig}.

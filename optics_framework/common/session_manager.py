@@ -8,6 +8,7 @@ from typing import Dict, Optional
 from pathlib import Path
 from optics_framework.common.Junit_eventhandler import setup_junit, cleanup_junit
 from optics_framework.common.config_handler import Config, ConfigHandler
+from optics_framework.common.error import Code, OpticsError
 from optics_framework.common.optics_builder import OpticsBuilder
 from optics_framework.common.models import TestCaseNode, ElementData, ApiData, ModuleData, TemplateData, ErrorDefinitions
 from optics_framework.common.eventSDK import EventSDK
@@ -141,6 +142,11 @@ class Session:
             # A remote caller must not choose where the server writes, so its outputs die with the session.
             config.execution_output_path = os.path.join(self._session_dir, "output")
             os.makedirs(config.execution_output_path)
+        if config.devices:
+            raise OpticsError(
+                Code.E0501,
+                message=f"A session drives one device, and this config names {', '.join(config.devices)} in its devices block.",
+            )
         self.config_handler = ConfigHandler(config)
         self.config = self.config_handler.config
         self.test_cases = test_cases

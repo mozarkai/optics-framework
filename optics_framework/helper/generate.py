@@ -13,7 +13,7 @@ import pandas as pd
 import json
 
 from optics_framework.common import safe_fs
-from optics_framework.common.config_handler import load_project_yaml
+from optics_framework.common.config_handler import is_devices_block, load_project_yaml
 from optics_framework.common.runner.data_reader import (
     CSVDataReader as RunnerCSVReader,
     is_elements_header,
@@ -807,6 +807,11 @@ def generate_test_file(
     # Config is always single YAML file
     config_reader = YAMLDataReader()
     config = config_reader.read_config(all_files["config"][0])
+    if is_devices_block(config.get("devices")):
+        raise ValueError(
+            f"Cannot generate: {all_files['config'][0]} has a devices block, and optics generate "
+            "writes code for one device and cannot write it for a devices block yet."
+        )
     rules = merge_project_popup_rules(parse_popup_rules(config.get("popup_rules") or []), folder_path)
     if rules:
         config["popup_rules"] = [rule.model_dump(mode="json") for rule in rules]

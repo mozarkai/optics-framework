@@ -46,14 +46,23 @@ def _load_project_config(folder: str) -> ProjectConfig:
     try:
         return ProjectConfig(config_from(data), {}, None)
     except OpticsError as error:
-        refused = {key: value for key, value in data.items() if not _accepted(key, value)}
+        refused = _refused_fields(data)
         kept = {key: value for key, value in data.items() if key not in refused}
         return ProjectConfig(Config(**kept), refused, f"{error.code.value} in {path}: {error.message}")
 
 
-def _accepted(key: str, value: Any) -> bool:
+def _refused_fields(data: dict[str, Any]) -> dict[str, Any]:
+    refused = {key: value for key, value in data.items() if not _accepted({key: value})}
+    kept = {key: value for key, value in data.items() if key not in refused}
+    if "devices" in kept and not _accepted(kept):
+        # Each kept field is valid alone, so the devices block is what clashes with a driver enabled beside it.
+        refused["devices"] = kept["devices"]
+    return refused
+
+
+def _accepted(fields: dict[str, Any]) -> bool:
     try:
-        config_from({key: value})
+        config_from(fields)
     except OpticsError:
         return False
     return True
@@ -216,6 +225,8 @@ class ProjectConfigTUI(App):
         if key in self.refused:
             return f"{self.refused[key]} (not valid)"
         value = getattr(self.config, key)
+        if key == "devices":
+            return str(list(value))
         if key in ConfigHandler.DEPENDENCY_KEYS and isinstance(value, list):
             enabled = [
                 name for item in value
@@ -274,7 +285,10 @@ class ProjectConfigTUI(App):
                 # Each entry must be keyed by the actual source name (e.g. "appium"),
                 # not the literal "name" — otherwise every source collapses to one
                 # unresolvable key.
-                self._set(key, [{source: DependencyConfig(enabled=True)} for source in parsed])
+                sources = [{source: DependencyConfig(enabled=True)} for source in parsed]
+                # The whole config is checked, so a driver enabled beside a devices block is refused before a save.
+                config_from({**self.config.model_dump(), key: sources})
+                self._set(key, sources)
             else:
                 value = parse_yaml(new_value, key) if isinstance(current_value, (dict, list)) else new_value
                 self._set(key, getattr(config_from({**self.config.model_dump(), key: value}), key))
@@ -302,9 +316,12 @@ class ProjectConfigTUI(App):
         # NOTE: rewriting config.yaml via yaml.safe_dump loses any YAML comments
         # the user wrote. This is acceptable for the --edit power-user path; the
         # beginner path (`optics configure`) writes a freshly rendered config.
-        safe_fs.write_text(
-            self.config_path, yaml.safe_dump(self.config.model_dump() | self.refused, default_flow_style=False)
-        )
+        saved = self.config.model_dump(exclude={"devices"})
+        if self.config.devices:
+            saved["devices"] = {
+                identifier: entry.model_dump(exclude_none=True) for identifier, entry in self.config.devices.items()
+            }
+        safe_fs.write_text(self.config_path, yaml.safe_dump(saved | self.refused, default_flow_style=False))
 
     async def action_quit(self) -> None:
         self.push_screen(QuitConfirmScreen(), self.handle_quit)
@@ -343,8 +360,11 @@ def configure(folder: str | None = None, edit: bool = False) -> None:
 
     config_path = _project_config_path(target)
     if os.path.exists(config_path):
-        _warn(_load_project_config(target).warning)
-        if not Confirm.ask(f"{config_path} already exists. Overwrite it?", default=False):
+        existing = _load_project_config(target)
+        _warn(existing.warning)
+        devices = existing.refused.get("devices") or existing.config.devices
+        lost = f" with its devices block ({', '.join(map(str, devices))}), which this command does not write" if devices else ""
+        if not Confirm.ask(f"{config_path} already exists{lost}. Overwrite it?", default=False):
             print("Aborted; existing config left unchanged.")
             return
 
