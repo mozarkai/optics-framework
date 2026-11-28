@@ -60,6 +60,9 @@ def _scene(level: float, placement: np.ndarray | None, screen_on: bool = True, c
     return cv2.GaussianBlur(np.clip(frame, 0, 255).astype(np.uint8), (0, 0), 0.8)
 
 
+CONFIGURED_LEVEL = 0.9
+
+
 class _Phone:
     """A device whose brightness keys change what the fake camera shows."""
 
@@ -74,6 +77,9 @@ class _Phone:
     def press_keycode(self, keycode: str, event_name=None) -> None:
         self.keys.append(keycode)
         self.level = min(1.0, max(0.3, self.level + (0.1 if keycode == "brightnessup" else -0.1)))
+
+    def apply_brightness(self) -> None:
+        self.level = CONFIGURED_LEVEL
 
     def supports(self, capability: str) -> bool:
         return True
@@ -135,9 +141,10 @@ class _KeysRefused(_Phone):
         raise ValueError(f"no key {keycode}")
 
 
-@pytest.mark.parametrize("phone", [_NoBrightnessKeys, _KeysRefused], indirect=True)
-def test_brightness_keys_that_do_nothing_fall_back_to_one_frame(camera, phone):
+@pytest.mark.parametrize("phone", [_Phone, _NoBrightnessKeys, _KeysRefused], indirect=True)
+def test_finding_the_screen_by_brightness_leaves_the_phone_at_its_configured_level(camera, phone):
     assert _shows_the_screen(_source(camera, phone, "brightness").capture())
+    assert phone.level == CONFIGURED_LEVEL
 
 
 def test_a_screen_that_stays_off_names_the_cause(camera, phone, monkeypatch):

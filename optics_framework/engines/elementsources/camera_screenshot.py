@@ -463,11 +463,12 @@ class CameraScreenshot(ElementSourceInterface):
         try:
             dim = self._at_brightness("brightnessdown")
             bright = self._at_brightness("brightnessup")
+            ways.insert(0, ("brightness", lambda: screen_finder.brightness_signals(dim, bright)))
         except Exception as exc:
             raise_if_session_dead(exc)
             internal_logger.warning(f"The driver did not press the brightness keys ({exc}); finding the screen in one frame")
-            return ways
-        return [("brightness", lambda: screen_finder.brightness_signals(dim, bright)), *ways]
+        self.driver.apply_brightness()
+        return ways
 
     def _at_brightness(self, key: str) -> np.ndarray:
         for _ in range(BRIGHTNESS_STEPS):

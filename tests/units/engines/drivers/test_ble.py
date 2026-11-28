@@ -48,7 +48,58 @@ class Events:
 
 def make_driver(fake: FakeDongle, platform="android", **caps) -> BLEDriver:
     capabilities = {"port": fake.port, "platform": platform, "frame": {"width": 1080, "height": 2340}, **caps}
-    return BLEDriver(config={"capabilities": capabilities}, event_sdk=Events())
+    driver = BLEDriver(config={"capabilities": capabilities}, event_sdk=Events())
+    driver.apply_brightness()
+    fake.commands[:] = _without_brightness(fake.commands)
+    return driver
+
+
+def _without_brightness(commands):
+    return [command for command in commands if command not in (("media", "brightnessdown"), ("media", "brightnessup"))]
+
+
+def _brightness_after(commands, steps: int, start: int) -> int:
+    level = start
+    for command in commands:
+        if command == ("media", "brightnessdown"):
+            level = max(0, level - 1)
+        elif command == ("media", "brightnessup"):
+            level = min(steps, level + 1)
+    return level
+
+
+@pytest.mark.parametrize(
+    ("platform", "caps", "steps", "level"),
+    [
+        pytest.param("ios", {}, 16, 4, id="iOS at a quarter by default"),
+        pytest.param("android", {}, 10, 3, id="Android at the nearest step by default"),
+        pytest.param("android", {"brightness": 100}, 10, 10, id="Android at full"),
+        pytest.param("ios", {"brightness": 0}, 16, 0, id="iOS at its lowest"),
+        pytest.param("ios", {"brightness": None}, 16, None, id="left as it is"),
+    ],
+)
+def test_a_phone_is_at_the_configured_brightness_from_its_first_action(plugged, platform, caps, steps, level):
+    fake = plugged()
+    driver = BLEDriver(config={"capabilities": {"port": fake.port, "platform": platform, "frame": {"width": 1080, "height": 2340}, **caps}}, event_sdk=Events())
+    assert fake.commands == []
+    driver.press_keycode("enter")
+    assert fake.commands[-1] == ("key", "enter")
+    ends = {_brightness_after(fake.commands, steps, start) for start in (0, steps // 2, steps)}
+    assert ends == ({level} if level is not None else {0, steps // 2, steps})
+
+
+def test_a_phone_not_linked_yet_still_opens_its_session(plugged):
+    fake = plugged(host_connected=False)
+    driver = BLEDriver(config={"capabilities": {"port": fake.port, "platform": "ios", "frame": {"width": 1080, "height": 2340}}}, event_sdk=Events())
+    with pytest.raises(OpticsError) as lost:
+        driver.press_keycode("enter")
+    assert lost.value.code == Code.E0106
+
+
+def test_a_computer_session_leaves_its_brightness_alone(plugged):
+    fake = plugged()
+    BLEDriver(config={"capabilities": {"port": fake.port, "platform": "macos", "frame": {"width": 1440, "height": 900}}}, event_sdk=Events())
+    assert fake.commands == []
 
 
 PAIRED = [("20:32:C6:02:7B:47", "iPhone"), ("78:ED:BC:25:5A:24", "OnePlus 15")]
@@ -145,7 +196,7 @@ def test_a_project_without_a_camera_runs_by_coordinates_and_keys(plugged, tmp_pa
     folder = blind_project(tmp_path, fake.port, [("Press By Percentage", "50", "50"), ("Enter Text Using Keyboard", "hi")])
 
     assert run_project(folder, use_printer=False)
-    assert fake.commands == [("tap", "0.5000", "0.5000"), PARK, ("text", '"hi"'), ("reset",)]
+    assert _without_brightness(fake.commands) == [("tap", "0.5000", "0.5000"), PARK, ("text", '"hi"'), ("reset",)]
 
 
 def _row(text, x, y):
