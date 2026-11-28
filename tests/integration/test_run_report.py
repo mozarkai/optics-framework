@@ -128,6 +128,26 @@ def test_a_module_listed_twice_in_a_test_case_runs_twice(tmp_path):
     ] == [("Pass", "PASS", ["PASS"]), ("Pass", "PASS", ["PASS"])]
 
 
+@pytest.mark.parametrize("command", ["execute", "dry_run"])
+def test_a_module_ends_with_the_result_of_its_keywords(tmp_path, cli, command):
+    _project(tmp_path, "TC One,Pass\nTC One,Late Break\nTC One,Pass\n", modules=_MODULES + (
+        "Late Break,Evaluate,${first},1\n"
+        "Late Break,Not A Keyword,,\n"
+        "Late Break,Evaluate,${last},1\n"
+    ))
+    cli(command, str(tmp_path), "--output", "none")
+    cases, _ = _report(tmp_path)
+    assert [
+        (module.get("name"), module.get("status"), module.get("code"), module.get("endtime") is not None,
+         [keyword.get("status") for keyword in module.findall("kw")])
+        for module in cases["TC One"].findall("kw")
+    ] == [
+        ("Pass", "PASS", None, True, ["PASS"]),
+        ("Late Break", "FAIL", "E0402", True, ["PASS", "FAIL", "NOT_RUN"]),
+        ("Pass", "NOT_RUN", None, False, ["NOT_RUN"]),
+    ]
+
+
 @pytest.mark.parametrize("test_cases, kind", [
     ("Suite Setup,Pass\nWeb Suite Setup,Pass\nTC One,Pass\n", "suite setup"),
     ("Login Setup,Pass\nCart Setup,Pass\nTC One,Pass\n", "test setup"),

@@ -816,6 +816,7 @@ class TestRunner(Runner):
         module_node: ModuleNode,
         test_case_result: TestCaseResult,
         extra: Dict[str, str],
+        dry_run: bool,
     ) -> bool:
         module_result = self._find_result(test_case_result.name, module_node)
         start_time = time.time()
@@ -831,68 +832,48 @@ class TestRunner(Runner):
             module_result, "RUNNING", time.time() - start_time, test_case_result.name
         )
 
-        if not self._step_resolves(module_node.name):
-            module_node.state = State.COMPLETED_FAILED
-            reason = self._unknown_step_reason(module_node.name)
-            self._note_failure(reason, Code.E0402)
-            module_result.reason = reason
-            module_result.hint = self._last_failure_hint or ""
-            await self._send_event(
-                EntityType.MODULE,
-                module_node,
-                EventStatus.FAIL,
-                reason=reason,
-                code=Code.E0402,
-                parent_id=test_case_result.id,
-                start_time=start_time,
-                end_time=time.time(),
-                elapsed=time.time() - start_time,
-            )
-            self._update_status(
-                module_result, "FAIL", time.time() - start_time, test_case_result.name
-            )
-            return False
-
-        current = module_node.keywords_head
-        while current:
-            extra["keyword"] = current.name
-            if not await self._execute_keyword(
-                current, module_node, test_case_result, extra
-            ):
-                module_node.state = State.COMPLETED_FAILED
-                await self._send_event(
-                    EntityType.MODULE,
-                    module_node,
-                    self._last_failure_status,
-                    reason=self._last_failure_reason,
-                    code=self._last_failure_code,
-                    parent_id=test_case_result.id,
-                    start_time=start_time,
-                    end_time=time.time(),
-                    elapsed=time.time() - start_time,
-                )
-                self._update_status(
-                    module_result,
-                    "FAIL",
-                    time.time() - start_time,
-                    test_case_result.name,
-                )
-                return False
-            current = current.next
-
-        module_node.state = State.COMPLETED_PASSED
+        passed = await self._run_module_steps(module_node, module_result, test_case_result, extra, dry_run)
+        module_node.state = State.COMPLETED_PASSED if passed else State.COMPLETED_FAILED
         await self._send_event(
             EntityType.MODULE,
             module_node,
-            EventStatus.PASS,
+            EventStatus.PASS if passed else self._last_failure_status,
+            reason=None if passed else self._last_failure_reason,
+            code=None if passed else self._last_failure_code,
             parent_id=test_case_result.id,
             start_time=start_time,
             end_time=time.time(),
             elapsed=time.time() - start_time,
         )
         self._update_status(
-            module_result, "PASS", time.time() - start_time, test_case_result.name
+            module_result, "PASS" if passed else "FAIL", time.time() - start_time, test_case_result.name
         )
+        return passed
+
+    async def _run_module_steps(
+        self,
+        module_node: ModuleNode,
+        module_result: ModuleResult,
+        test_case_result: TestCaseResult,
+        extra: Dict[str, str],
+        dry_run: bool,
+    ) -> bool:
+        if not self._step_resolves(module_node.name):
+            reason = self._unknown_step_reason(module_node.name)
+            self._note_failure(reason, Code.E0402)
+            module_result.reason = reason
+            module_result.hint = self._last_failure_hint or ""
+            return False
+        current = module_node.keywords_head
+        while current:
+            extra["keyword"] = current.name
+            if dry_run:
+                passed = await self._dry_run_step(current, module_node, test_case_result)
+            else:
+                passed = await self._execute_keyword(current, module_node, test_case_result, extra)
+            if not passed:
+                return False
+            current = current.next
         return True
 
     async def _process_test_case(
@@ -945,51 +926,29 @@ class TestRunner(Runner):
 
         module_current = current.modules_head
         while module_current:
-            if dry_run:
-                if not await self._dry_run_module(
-                    module_current, test_case_result, testcase_id
-                ):
-                    current.state = State.COMPLETED_FAILED
-                    await self._send_event(
-                        EntityType.TEST_CASE,
-                        current,
-                        EventStatus.FAIL,
-                        reason=self._last_failure_reason,
-                        code=self._last_failure_code,
-                        start_time=start_time,
-                        end_time=time.time(),
-                        elapsed=time.time() - start_time,
-                    )
-                    self._update_status(
-                        test_case_result,
-                        "FAIL",
-                        time.time() - start_time,
-                        test_case_result.name,
-                    )
-                    return test_case_result
-            else:
-                if not await self._process_module(
-                    module_current, test_case_result, extra
-                ):
-                    current.state = State.COMPLETED_FAILED
+            if not await self._process_module(
+                module_current, test_case_result, extra, dry_run
+            ):
+                current.state = State.COMPLETED_FAILED
+                if not dry_run:
                     self._capture_failure_artifacts(current.name)
-                    await self._send_event(
-                        EntityType.TEST_CASE,
-                        current,
-                        self._last_failure_status,
-                        reason=self._last_failure_reason,
-                        code=self._last_failure_code,
-                        start_time=start_time,
-                        end_time=time.time(),
-                        elapsed=time.time() - start_time,
-                    )
-                    self._update_status(
-                        test_case_result,
-                        "FAIL",
-                        time.time() - start_time,
-                        test_case_result.name,
-                    )
-                    return test_case_result
+                await self._send_event(
+                    EntityType.TEST_CASE,
+                    current,
+                    self._last_failure_status,
+                    reason=self._last_failure_reason,
+                    code=self._last_failure_code,
+                    start_time=start_time,
+                    end_time=time.time(),
+                    elapsed=time.time() - start_time,
+                )
+                self._update_status(
+                    test_case_result,
+                    "FAIL",
+                    time.time() - start_time,
+                    test_case_result.name,
+                )
+                return test_case_result
             module_current = module_current.next
 
         current.state = State.COMPLETED_PASSED
@@ -1034,102 +993,59 @@ class TestRunner(Runner):
         positional, keywords = step_arguments(method, params, self.elements)
         bind_params(name, method, positional, keywords)
 
-    async def _dry_run_module(
+    async def _dry_run_step(
         self,
+        keyword_node: KeywordNode,
         module_node: ModuleNode,
         test_case_result: TestCaseResult,
-        testcase_id: str,
     ) -> bool:
-        module_result = self._find_result(test_case_result.name, module_node)
+        keyword_result = self._find_result(test_case_result.name, module_node, keyword_node.id)
         start_time = time.time()
-        module_node.state = State.RUNNING
+        keyword_node.state = State.RUNNING
         await self._send_event(
-            EntityType.MODULE,
-            module_node,
+            EntityType.KEYWORD,
+            keyword_node,
             EventStatus.RUNNING,
-            parent_id=testcase_id,
+            parent_id=module_node.id,
             start_time=start_time,
         )
-        self._update_status(module_result, "RUNNING", 0.0, test_case_result.name)
+        self._update_status(keyword_result, "RUNNING", 0.0, test_case_result.name)
 
-        if not self._step_resolves(module_node.name):
-            module_node.state = State.COMPLETED_FAILED
-            reason = self._unknown_step_reason(module_node.name)
-            self._note_failure(reason, Code.E0402)
-            module_result.reason = reason
-            module_result.hint = self._last_failure_hint or ""
+        try:
+            self._dry_run_keyword(keyword_node, keyword_result)
+        except (ValueError, OpticsError) as e:
+            explanation = explain(e)
+            reason = explanation.summary
+            code = e.code if isinstance(e, OpticsError) else Code.E0403
+            self._note_failure(reason, code, hint=explanation.hint)
+            keyword_result.reason = reason
+            keyword_result.hint = self._last_failure_hint or ""
+            keyword_node.state = State.COMPLETED_FAILED
             await self._send_event(
-                EntityType.MODULE,
-                module_node,
+                EntityType.KEYWORD,
+                keyword_node,
                 EventStatus.FAIL,
-                reason=reason,
-                code=Code.E0402,
-                parent_id=testcase_id,
+                reason,
+                code=code,
+                parent_id=module_node.id,
                 start_time=start_time,
                 end_time=time.time(),
                 elapsed=time.time() - start_time,
             )
-            self._update_status(module_result, "FAIL", 0.0, test_case_result.name)
+            self._update_status(keyword_result, "FAIL", 0.0, test_case_result.name)
             return False
 
-        keyword_current = module_node.keywords_head
-        while keyword_current:
-            keyword_result = self._find_result(
-                test_case_result.name, module_node, keyword_current.id
-            )
-            keyword_current.state = State.RUNNING
-            await self._send_event(
-                EntityType.KEYWORD,
-                keyword_current,
-                EventStatus.RUNNING,
-                parent_id=module_node.id,
-                start_time=start_time,
-            )
-            self._update_status(keyword_result, "RUNNING", 0.0, test_case_result.name)
-
-            try:
-                self._dry_run_keyword(keyword_current, keyword_result)
-            except (ValueError, OpticsError) as e:
-                explanation = explain(e)
-                reason = explanation.summary
-                code = e.code if isinstance(e, OpticsError) else Code.E0403
-                self._note_failure(reason, code, hint=explanation.hint)
-                keyword_result.reason = reason
-                keyword_result.hint = self._last_failure_hint or ""
-                keyword_current.state = State.COMPLETED_FAILED
-                await self._send_event(
-                    EntityType.KEYWORD,
-                    keyword_current,
-                    EventStatus.FAIL,
-                    reason,
-                    code=code,
-                    parent_id=module_node.id,
-                    start_time=start_time,
-                    end_time=time.time(),
-                    elapsed=time.time() - start_time,
-                )
-                self._update_status(keyword_result, "FAIL", 0.0, test_case_result.name)
-                self._update_status(module_result, "FAIL", 0.0, test_case_result.name)
-                return False
-
-            keyword_current.state = State.COMPLETED_PASSED
-            await self._send_event(
-                EntityType.KEYWORD,
-                keyword_current,
-                EventStatus.PASS,
-                parent_id=module_node.id,
-                start_time=start_time,
-                end_time=time.time(),
-                elapsed=time.time() - start_time,
-            )
-            self._update_status(keyword_result, "PASS", 0.0, test_case_result.name)
-            keyword_current = keyword_current.next
-
-        module_node.state = State.COMPLETED_PASSED
+        keyword_node.state = State.COMPLETED_PASSED
         await self._send_event(
-            EntityType.MODULE, module_node, EventStatus.PASS, parent_id=testcase_id
+            EntityType.KEYWORD,
+            keyword_node,
+            EventStatus.PASS,
+            parent_id=module_node.id,
+            start_time=start_time,
+            end_time=time.time(),
+            elapsed=time.time() - start_time,
         )
-        self._update_status(module_result, "PASS", 0.0, test_case_result.name)
+        self._update_status(keyword_result, "PASS", 0.0, test_case_result.name)
         return True
 
     async def execute_test_case(self, test_case: str) -> TestCaseResult:
