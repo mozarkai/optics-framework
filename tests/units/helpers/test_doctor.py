@@ -52,6 +52,31 @@ elements_sources:
       enabled: true
 """
 
+DEVICES_CONFIG = """\
+elements_sources:
+  - appium_find_element: {enabled: true}
+  - playwright_find_element: {enabled: true}
+devices:
+  PH1:
+    driver_sources:
+      - appium:
+          enabled: true
+          url: 'http://hub-a.test:4444'
+          capabilities: {platformName: Android, deviceName: pixel, appPackage: com.example.app, appActivity: .Main}
+  TAB:
+    driver_sources:
+      - appium:
+          enabled: true
+          url: 'http://hub-b.test:4723'
+          capabilities: {platformName: iOS, deviceName: ipad}
+  WEB:
+    driver_sources:
+      - playwright: {enabled: true, capabilities: {browser: chromium}}
+  GRID:
+    driver_sources:
+      - playwright: {enabled: true, url: 'ws://grid.test/playwright'}
+"""
+
 
 def _render(monkeypatch, func, *args, **kwargs):
     """Run a reporting function with a buffered console; returns (result, text)."""
@@ -172,6 +197,26 @@ class TestValidateProject:
         assert settings.status == "warn"
         assert "attaches to session s-1" in settings.detail
 
+    def test_a_devices_project_gets_the_rows_of_each_device(self, tmp_path):
+        rows = {row.name: row.status for row in doctor.validate_project(_write_config(tmp_path, raw=DEVICES_CONFIG))}
+        assert rows == {
+            "PH1: driver": "ok", "PH1: appium element source": "ok", "PH1: appium settings": "ok",
+            "TAB: driver": "ok", "TAB: appium element source": "ok", "TAB: appium settings": "fail",
+            "WEB: driver": "ok", "WEB: playwright element source": "ok", "WEB: playwright settings": "ok",
+            "GRID: driver": "ok", "GRID: playwright element source": "ok", "GRID: playwright settings": "warn",
+        }
+
+    @pytest.mark.parametrize(("devices", "row", "status", "detail", "runnable"), [
+        ("devices: {PH1: {driver_sources: [{appium: {enabled: true}}], values: {pin: 1234}}}", "config: file", "fail",
+         "devices.PH1.values.pin: put the value in quotes", False),
+        ("devices: [pixel, iphone]", "config: devices", "info", "not a devices block", True),
+    ], ids=["a block that the config refuses", "a devices key of the project's own"])
+    def test_a_devices_key_gets_its_own_row(self, tmp_path, devices, row, status, detail, runnable):
+        raw = project_config.render_project_config(IOS_ANSWERS) + devices + "\n"
+        rows = {shown.name: shown for shown in doctor.validate_project(_write_config(tmp_path, raw=raw))}
+        assert (rows[row].status, detail in rows[row].detail) == (status, True)
+        assert ("config: project" in rows) is runnable
+
     def test_unparseable_yaml_fails(self, tmp_path):
         folder = _write_config(tmp_path, raw="driver_sources: [oops\n")
         rows = doctor.validate_project(folder)
@@ -195,3 +240,10 @@ class TestRunDoctor:
         closing = out.split("Before your first real run:")[1]
         assert "Install Android platform-tools" in closing
         assert XA11Y_INSTALL not in closing
+
+    def test_a_devices_project_needs_what_each_of_its_devices_needs(self, tmp_path, monkeypatch):
+        runnable = DEVICES_CONFIG.replace("deviceName: ipad", "deviceName: ipad, bundleId: com.example.app")
+        _, out = _render(monkeypatch, doctor.run_doctor, _write_config(tmp_path, raw=runnable))
+        report, closing = out.split("Before your first real run:")
+        assert ["not reachable at hub-a.test:4444" in report, "not reachable at hub-b.test:4723" in report] == [True, True]
+        assert ["Install Android platform-tools" in closing, "optics setup --install playwright" in closing] == [True, True]
