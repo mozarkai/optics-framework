@@ -17,7 +17,7 @@ from optics_framework.common.logging_config import LoggerContext, internal_logge
 from optics_framework.common.models import TestCaseNode
 from optics_framework.common.error import OpticsError, Code, explain
 from optics_framework.common.utils import _is_list_type
-from optics_framework.api.keywords import build_keywords
+from optics_framework.api.keywords import build_keywords, keyword_shapes
 from optics_framework.common.events import EntityType, Event, EventManager, EventStatus, get_event_manager
 
 NO_TEST_CASES_LOADED = "No test cases loaded"
@@ -233,10 +233,13 @@ class RunnerFactory:
         session: Session,
         runner_type: str,
         use_printer: bool,
-        event_manager: EventManager
+        event_manager: EventManager,
+        dry_run: bool = False,
     ) -> Runner:
-
-        keyword_map = build_keywords(session, device=session.driver is not None).keyword_map
+        if dry_run:
+            keyword_map = keyword_shapes()
+        else:
+            keyword_map = build_keywords(session, device=session.driver is not None).keyword_map
 
         if runner_type == "test_runner":
             result_printer = TreeResultPrinter.get_instance(
@@ -392,7 +395,7 @@ class ExecutionEngine:
 
         with LoggerContext(params.session_id):
             runner = RunnerFactory.create_runner(
-                session, runner_type, use_printer, event_manager=event_manager
+                session, runner_type, use_printer, event_manager=event_manager, dry_run=params.mode == "dry_run",
             )
             if hasattr(runner, "result_printer") and runner.result_printer and use_printer:
                 internal_logger.debug("Starting result printer live display")

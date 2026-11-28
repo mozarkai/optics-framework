@@ -729,6 +729,8 @@ class RunnerArgs(BaseModel):
 class BaseRunner:
     """Base class for running test cases from CSV and YAML files using ExecutionEngine."""
 
+    opens_devices = True
+
     def __init__(self, args: RunnerArgs):
         self.folder_path = args.folder_path
         self.runner = args.runner
@@ -912,6 +914,7 @@ class BaseRunner:
                 self.api_data,
                 self.templates_data,
                 self.error_definitions_data,
+                open_devices=self.opens_devices,
             )
         except OpticsError as error:
             abort_with_panel([
@@ -991,6 +994,8 @@ class ExecuteRunner(BaseRunner):
 
 
 class DryRunRunner(BaseRunner):
+    opens_devices = False
+
     async def execute(self):
         """Perform dry run of test cases."""
         return await self.run("dry_run")

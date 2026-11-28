@@ -71,3 +71,21 @@ def test_a_value_that_holds_a_reference_is_substituted_once(project, dry_run):
     (project / "elements.csv").write_text("Element_Name,Element_ID\nsnippet,${literal}\n")
     (project / "modules.csv").write_text("module_name,module_step,param_1\nPress Seven,Enter Text Direct,prefix ${snippet}\n")
     assert dry_run(project).returncode == 0
+
+
+def test_a_dry_run_opens_no_device(project, dry_run):
+    (project / "config.yaml").write_text("""driver_sources:
+  - ble:
+      enabled: true
+      capabilities:
+        platform: ios
+        frame: {width: 1170, height: 2532}
+        serial: NOT-PLUGGED-IN
+elements_sources:
+  - camera_screenshot:
+      enabled: true
+      capabilities:
+        camera_index: 97
+""")
+    (project / "elements.csv").write_text("Element_Name,Element_ID\nSeven,Seven\n")
+    assert dry_run(project).returncode == 0
