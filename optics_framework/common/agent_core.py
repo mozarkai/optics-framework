@@ -90,6 +90,7 @@ _UNGUARDED_KEYWORDS = frozenset({"press_keycode", "sleep"})
 _TAPPABLE = frozenset({"tap", "long", "toggle", "input"})
 ELEMENT_SLOTS = ("element", "elements")
 _TARGETED = frozenset({"tap", "type", "select"})
+_POSITION_RE = re.compile(r"@\s*\d+\s*,\s*\d+(?:\s*,\s*\d+\s*,\s*\d+)?")
 _TIMEOUT_PARAMS = ("timeout", "timeout_str")
 _LOCATOR_TYPES = frozenset({"Image", "CSS", "XPath"})
 _NO_CHECK = "check needs at least one text in present or absent"
@@ -590,13 +591,20 @@ def _shared_text_index(found: tuple[Row, Ladder] | None, verb: str) -> int:
     return index
 
 
+def _check_target(verb: str, target: str) -> None:
+    if not target:
+        raise _invalid(f"{verb} needs a target")
+    if _POSITION_RE.fullmatch(target):
+        raise _invalid(f'"{target}" is a position, not a target; pass a ref, the text on the screen, or an image file from project_path')
+
+
 def prepare(action: Action, refs: RefTable, keywords: Keywords, elements: Mapping[str, Any] | None = None) -> Prepared:
     """Resolve the action's target and build its keyword calls; with ``elements``, each ``${name}`` must name one."""
     verb = action.verb
     if verb not in VERBS:
         raise _invalid(f'unknown action "{verb}"; use one of {", ".join(VERBS)}')
-    if verb in _TARGETED and not action.target.strip():
-        raise _invalid(f"{verb} needs a target")
+    if verb in _TARGETED:
+        _check_target(verb, action.target.strip())
     _check_vars(action, elements)
     found = _target(refs, action.target) if verb in (*_TARGETED, "keyword") else None
     row = found[0] if found else None

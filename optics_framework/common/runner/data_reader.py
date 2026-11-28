@@ -307,11 +307,34 @@ class DataReader(ABC):
         pass
 
 
+def _overflow_name(last_column: str, n: int) -> str:
+    """The n-th column past ``last_column``: ``param_2`` continues as ``param_3``, a column with no number as ``name#1``."""
+    numbered = re.fullmatch(r"(.*?)(\d+)", last_column)
+    return f"{numbered[1]}{int(numbered[2]) + n}" if numbered else f"{last_column}#{n}"
+
+
+def _keep_overflow(row: dict, last_column: str) -> dict:
+    """Cells past the header continue its last column, so a step's fourth param needs no param_4 header."""
+    n = 0
+    for value in row.pop(None, None) or []:
+        n += 1
+        while _overflow_name(last_column, n) in row:
+            n += 1
+        row[_overflow_name(last_column, n)] = value
+    return row
+
+
 def csv_rows(lines: Iterable[str]) -> list:
     """The rows of CSV text, keyed by lower-cased headers, with a short row's missing cells empty."""
     reader = csv.DictReader(lines, restval="")
     reader.fieldnames = [h.strip().lower() for h in reader.fieldnames or []]
-    return list(reader)
+    last_column = reader.fieldnames[-1] if reader.fieldnames else ""
+    return [_keep_overflow(row, last_column) for row in reader]
+
+
+def test_steps(row: dict) -> list[str]:
+    """The non-empty steps of a test_cases row: test_step, then any cells past the header."""
+    return [v.strip() for k, v in row.items() if (k == "test_step" or k.startswith("test_step#")) and v.strip()]
 
 
 def modules_from_rows(rows: list) -> dict:
@@ -364,16 +387,12 @@ class CSVDataReader(DataReader):
         :return: A dictionary where keys are test case names and values are lists of test steps.
         :rtype: dict
         """
-        rows = self.read_file(file_path)
-        test_cases = {}
-        for row in rows:
+        test_cases: dict = {}
+        for row in self.read_file(file_path):
             test_case = row.get("test_case", "").strip()
-            test_step = row.get("test_step", "").strip()
-            if not test_case or not test_step:
-                continue
-            if test_case not in test_cases:
-                test_cases[test_case] = []
-            test_cases[test_case].append(test_step)
+            steps = test_steps(row)
+            if test_case and steps:
+                test_cases.setdefault(test_case, []).extend(steps)
         return test_cases
 
     def read_modules(

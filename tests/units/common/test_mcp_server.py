@@ -182,7 +182,8 @@ def _shown(reply):
 @pytest.mark.parametrize(("call", "shown"), [
     (("tap", {"target": "Add Event"}), "expect_present"),
     (("observe", {"query": "Save"}), 'no row of 2 holds "Save"'),
-], ids=["unchanged_action_asks_for_an_expectation", "empty_query_counts_rows"])
+    (("tap", {"target": "@332,952"}), '"@332,952" is a position, not a target; pass a ref'),
+], ids=["unchanged_action_asks_for_an_expectation", "empty_query_counts_rows", "position_target_names_what_works"])
 def test_what_the_agent_sees_says_what_to_do_next(desktop, call, shown):
     reply, = _calls(call)
     assert shown in _shown(reply)

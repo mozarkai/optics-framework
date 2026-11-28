@@ -166,11 +166,12 @@ def _lock_controls(cap: cv2.VideoCapture) -> list[str]:
 
 def open_webcam(index: int, width: int | None = None, height: int | None = None) -> Frames:
     """The webcam at ``index``; on macOS, read by a launchd reader when this process may not use the camera (E0305)."""
-    webcam = Webcam(index, width, height)
-    if webcam.opened:
-        return webcam
+    # OpenCV cannot open a camera this process is not yet allowed: it fails at once and prints its own warnings.
     access = camera_access()
     if access in (None, "authorized"):
+        webcam = Webcam(index, width, height)
+        if webcam.opened:
+            return webcam
         raise _closed(f"no camera at index {index}" if access else f"the camera at index {index} cannot be opened")
     internal_logger.info(f"This process may not use the camera ({access}); starting a camera reader through launchd")
     return WebcamReader(index, width, height)

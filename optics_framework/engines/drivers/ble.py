@@ -67,6 +67,7 @@ NEW_SCREEN = 0.5
 SAME_SCREEN = 0.8
 # Scrolls of about 0.65 screens each; an app list of 300 apps is about 12.
 LIST_SCROLLS = 15
+_REFUSAL_HINTS = {"go_back": "This device has no Back key; tap the app's own back control, usually at the top left of the screen."}
 
 
 @dataclass(frozen=True)
@@ -441,7 +442,8 @@ class BLEDriver(DriverInterface):
             with _mapped():
                 self._go_home()
         raise OpticsError(Code.E0405, message=f"No launch method opened '{name}': tried {', '.join(methods)}. "
-                                              "Set capabilities.launch to the methods that open apps on this device")
+                                              "Something such as an alert may cover the home screen; close it, "
+                                              "or set capabilities.launch to the methods that open apps on this device")
 
     def _launch_unchecked(self, name: str, methods: list[str]) -> None:
         blind = [method for method in methods if method not in SEEING_METHODS]
@@ -597,7 +599,7 @@ class BLEDriver(DriverInterface):
 
     def _require(self, capability: str) -> None:
         if not self.supports(capability):
-            self._unsupported(capability)
+            self._unsupported(capability, _REFUSAL_HINTS.get(capability))
 
     def _to_fractions(self, x: float, y: float) -> tuple[float, float]:
         frame = self.capabilities.frame
