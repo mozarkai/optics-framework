@@ -1,5 +1,7 @@
 """The one place a session's keywords are built, so every entry point gets the same keywords wired the same way."""
+import inspect
 from dataclasses import dataclass
+from types import MethodType
 from typing import Any, Callable, Dict, Optional
 
 from optics_framework.api.action_keyword import ActionKeyword
@@ -10,6 +12,16 @@ from optics_framework.common.runner.keyword_register import KeywordRegistry
 from optics_framework.common.session_manager import Session
 
 KEYWORD_SOURCES = (ActionKeyword, AppManagement, FlowControl, Verifier)
+
+
+def keyword_shapes() -> Dict[str, Callable[..., Any]]:
+    """Every keyword with the signature a session gives it and no session behind it, for a dry run, which calls none."""
+    return {
+        name: MethodType(function, source)
+        for source in KEYWORD_SOURCES
+        for name, function in inspect.getmembers(source, inspect.isfunction)
+        if not name.startswith("_")
+    }
 
 
 @dataclass

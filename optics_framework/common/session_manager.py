@@ -72,7 +72,8 @@ class SessionHandler(ABC):
                        elements: Optional[ElementData],
                        apis: Optional[ApiData],
                        templates: Optional[TemplateData] = None,
-                       error_definitions: Optional[ErrorDefinitions] = None) -> str:
+                       error_definitions: Optional[ErrorDefinitions] = None,
+                       open_devices: bool = True) -> str:
         pass
 
     @abstractmethod
@@ -118,11 +119,12 @@ class Session:
                  elements: Optional[ElementData],
                  apis: Optional[ApiData],
                  templates: Optional[TemplateData] = None,
-                 error_definitions: Optional[ErrorDefinitions] = None):
+                 error_definitions: Optional[ErrorDefinitions] = None,
+                 open_devices: bool = True):
         self.session_id = session_id
         self._session_dir: str = tempfile.mkdtemp(prefix="optics_session_")
         try:
-            self._open(config, test_cases, modules, elements, apis, templates, error_definitions)
+            self._open(config, test_cases, modules, elements, apis, templates, error_definitions, open_devices)
         except BaseException:
             _release(session_id, self._session_dir)
             raise
@@ -133,7 +135,8 @@ class Session:
               elements: Optional[ElementData],
               apis: Optional[ApiData],
               templates: Optional[TemplateData],
-              error_definitions: Optional[ErrorDefinitions]) -> None:
+              error_definitions: Optional[ErrorDefinitions],
+              open_devices: bool) -> None:
         if config.remote_caller:
             # A remote caller must not choose where the server writes, so its outputs die with the session.
             config.execution_output_path = os.path.join(self._session_dir, "output")
@@ -167,7 +170,7 @@ class Session:
         self.optics.add_llm(enabled_llm_configs)
         _maybe_setup_junit(config, self.session_id, self.config.execution_output_path)
 
-        self.driver = self.optics.get_driver() if enabled_driver_configs else None
+        self.driver = self.optics.get_driver() if enabled_driver_configs and open_devices else None
         self.event_queue = asyncio.Queue()
         self.keyword_lock = asyncio.Lock()
 
@@ -184,10 +187,13 @@ class SessionManager(SessionHandler):
                        elements: Optional[ElementData],
                        apis: Optional[ApiData],
                        templates: Optional[TemplateData] = None,
-                       error_definitions: Optional[ErrorDefinitions] = None) -> str:
+                       error_definitions: Optional[ErrorDefinitions] = None,
+                       open_devices: bool = True) -> str:
         """Creates a new session with a unique ID."""
         session_id = str(uuid.uuid4())
-        self.sessions[session_id] = Session(session_id, config, test_cases, modules, elements, apis, templates, error_definitions)
+        self.sessions[session_id] = Session(
+            session_id, config, test_cases, modules, elements, apis, templates, error_definitions, open_devices,
+        )
         return session_id
 
     def get_session(self, session_id: str) -> Optional[Session]:
