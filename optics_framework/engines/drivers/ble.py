@@ -442,7 +442,8 @@ class BLEDriver(DriverInterface):
             with _mapped():
                 self._go_home()
         raise OpticsError(Code.E0405, message=f"No launch method opened '{name}': tried {', '.join(methods)}. "
-                                              "Set capabilities.launch to the methods that open apps on this device")
+                                              "Something such as an alert may cover the home screen; close it, "
+                                              "or set capabilities.launch to the methods that open apps on this device")
 
     def _launch_unchecked(self, name: str, methods: list[str]) -> None:
         blind = [method for method in methods if method not in SEEING_METHODS]
