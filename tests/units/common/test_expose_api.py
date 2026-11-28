@@ -66,6 +66,14 @@ def test_a_session_whose_app_does_not_close_is_still_stopped(client):
     assert expose_api.session_manager.get_session(session_id) is None
 
 
+def test_a_session_whose_app_does_not_launch_is_ended(client):
+    before = set(expose_api.session_manager.sessions)
+    appium = {"url": "http://127.0.0.1:9", "capabilities": {"platformName": "Android"}}
+    resp = client.post("/v1/sessions/start", json={"driver_sources": [{"appium": appium}], "elements_sources": []})
+    assert (resp.status_code, resp.json()["detail"]["code"]) == (500, "E0102")
+    assert set(expose_api.session_manager.sessions) == before
+
+
 def test_add_session_api_invalid_data_returns_400(client, session):
     resp = client.post(f"/v1/sessions/{session.session_id}/api", json={"collections": "bad"})
     assert resp.status_code == 400
