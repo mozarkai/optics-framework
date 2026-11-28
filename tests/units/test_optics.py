@@ -68,6 +68,13 @@ def test_setup_with_a_popup_rule_that_cannot_work():
         Code.E0501, "popup_rules['Rate Us'].action.type: Input should be 'tap', 'back', 'alert', 'module' or 'none' (got 'swipe')")
 
 
+def test_setup_refuses_a_devices_block():
+    devices = {identifier: {"driver_sources": APPIUM_ONLY["driver_sources"]} for identifier in ("PH1", "PH2")}
+    optics = Optics()
+    with pytest.raises(ValueError, match="A session drives one device, and this config names PH1, PH2"):
+        optics.setup(config={"driver_sources": [], "elements_sources": [], "devices": devices})
+
+
 class TestAddPopupRules:
     def test_add_popup_rules(self, optics):
         optics.add_popup_rules([rule_dict("A")])

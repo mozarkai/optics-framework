@@ -31,7 +31,9 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 import yaml
 
 from optics_framework.common import fallback, keyword_outcome, utils
-from optics_framework.common.config_handler import Config, DependencyConfig, config_from, load_project_yaml, resolve_config_file
+from optics_framework.common.config_handler import (
+    Config, DependencyConfig, config_from, is_devices_block, load_project_yaml, resolve_config_file,
+)
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.agent_core import (
     TYPED_VALUE_PARAMS,
@@ -226,7 +228,7 @@ def _config_from_yaml(path: str, folder_path: str) -> Optional[Config]:
             raise OpticsError(Code.E0501, message=f"Failed to parse {path}: {exc}") from exc
         internal_logger.debug("Skipping malformed YAML %s: %s", path, exc)
         return None
-    if not isinstance(data, dict) or not (set(data.keys()) & _CONFIG_KEYS):
+    if not isinstance(data, dict) or not (set(data.keys()) & _CONFIG_KEYS or is_devices_block(data.get("devices"))):
         return None
     data = resolve_config_file(data, folder_path)
     try:
@@ -278,6 +280,11 @@ def _compose_config(folder_path: Optional[str]) -> Config:
                 "in the project folder. See optics_framework/samples/ "
                 "(android=appium, browser=playwright)."
             ),
+        )
+    if config.devices:
+        raise OpticsError(
+            Code.E0501,
+            message=f"config.yaml has a devices block ({', '.join(config.devices)}); optics live runs one device and cannot run a devices block yet.",
         )
     drivers = _enabled_drivers(config)
     if not drivers:

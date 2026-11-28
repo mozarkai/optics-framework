@@ -2,10 +2,12 @@ import json
 import os
 import re
 from collections.abc import Mapping
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices, BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, field_validator, model_validator,
+)
 
 from optics_framework.common.error import OpticsError, Code
 from optics_framework.common.logging_config import initialize_handlers, is_secret_entry, register_config_secret
@@ -19,6 +21,7 @@ _VERBATIM_FIELDS = frozenset({"popup_rules"})
 # Expanded by the driver at connect time, which also masks the referenced values out of its errors.
 _DRIVER_EXPANDED = {"playwright": frozenset({"url", "headers"})}
 _BASE_KEY = "$from"
+_DEVICE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 MAX_YAML_NODES = 1_000_000
 
 
@@ -91,21 +94,45 @@ def resolve_config_file(data: dict, base_dir: str) -> dict:
     """Expand environment references and resolve ``./`` paths against ``base_dir`` in a parsed config file.
 
     ``element_sources`` is read as ``elements_sources``; when both are set, ``elements_sources`` wins."""
+    resolved = _resolve_fields(_Resolver(base_dir), data)
+    _register_secret_values(resolved)
+    return resolved
+
+
+def is_devices_block(value: Any) -> bool:
+    """True for the shape of a ``devices`` block, a map of entries of which one at least holds ``driver_sources``."""
+    return isinstance(value, dict) and any(
+        isinstance(entry, DeviceEntry) or isinstance(entry, dict) and "driver_sources" in entry
+        for entry in value.values()
+    )
+
+
+def _resolve_fields(resolver: "_Resolver", data: dict) -> dict:
     if "element_sources" in data:
         data = dict(data)
         data.setdefault("elements_sources", data.pop("element_sources"))
-    resolver = _Resolver(base_dir)
-    resolved = {key: _resolve_field(resolver, key, value) for key, value in data.items()}
-    _register_secret_values(resolved)
-    return resolved
+    return {key: _resolve_field(resolver, key, value) for key, value in data.items()}
 
 
 def _resolve_field(resolver: "_Resolver", key: str, value: Any) -> Any:
     if key in _VERBATIM_FIELDS:
         return value
+    if key == "devices" and is_devices_block(value):
+        return {identifier: _resolve_device(resolver, entry) for identifier, entry in value.items()}
     if key == "driver_sources" and isinstance(value, list):
         return [resolver.driver(entry) for entry in value]
     return resolver.value(value, key not in _OUTPUT_PATH_FIELDS)
+
+
+def _resolve_device(resolver: "_Resolver", entry: Any) -> Any:
+    """A device entry resolves as the top level does; its values take environment references and are never paths."""
+    if not isinstance(entry, dict):
+        return entry
+    resolved = _resolve_fields(resolver, {key: value for key, value in entry.items() if key != "values"})
+    values = entry.get("values")
+    if isinstance(values, dict):
+        values = {name: expand_env(value) if isinstance(value, str) else value for name, value in values.items()}
+    return {**resolved, "values": values} if "values" in entry else resolved
 
 
 class _Resolver:
@@ -222,14 +249,44 @@ class NLAgentConfig(BaseModel):
     escalation_model: str = ""
 
 
+Sources = List[Dict[str, DependencyConfig]]
+
+
+def _quoted_text(value: Any) -> str:
+    if not isinstance(value, str):
+        # YAML reads 0123 as 83 and 12:30 as 750, so a value that is not text may not be what the file shows.
+        raise ValueError("put the value in quotes, or YAML does not read it as text")
+    return value
+
+
+class DeviceEntry(BaseModel):
+    """One device of a ``devices`` block: its own stack, laid over the top-level settings, and its values."""
+    driver_sources: Sources
+    elements_sources: Optional[Sources] = Field(
+        default=None, validation_alias=AliasChoices("elements_sources", "element_sources"))
+    text_detection: Optional[Sources] = None
+    image_detection: Optional[Sources] = None
+    llm_models: Optional[Sources] = None
+    permissions: Optional[Permissions] = None
+    values: Dict[str, Annotated[str, BeforeValidator(_quoted_text)]] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _has_an_enabled_driver(self) -> "DeviceEntry":
+        if not any(details.enabled for source in self.driver_sources for details in source.values()):
+            raise ValueError("needs an enabled driver in its driver_sources")
+        return self
+
+
 class Config(BaseModel):
     """Default configuration structure."""
     console: bool = True
-    driver_sources: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
-    elements_sources: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
-    text_detection: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
-    image_detection: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
-    llm_models: List[Dict[str, DependencyConfig]] = Field(default_factory=list)
+    driver_sources: Sources = Field(default_factory=list)
+    elements_sources: Sources = Field(default_factory=list)
+    text_detection: Sources = Field(default_factory=list)
+    image_detection: Sources = Field(default_factory=list)
+    llm_models: Sources = Field(default_factory=list)
     file_log: bool = False
     json_log: bool = False
     save_captures: bool = True
@@ -249,6 +306,35 @@ class Config(BaseModel):
     nl_agent: NLAgentConfig = Field(default_factory=NLAgentConfig)
     popup_rules: List[PopupRule] = Field(default_factory=list)
     permissions: Permissions = Field(default_factory=dict)
+    devices: Dict[str, DeviceEntry] = Field(default_factory=dict)
+
+    @field_validator("devices", mode="before")
+    @classmethod
+    def _devices_block_only(cls, devices: Any) -> Any:
+        # Config ignores a key it does not know, and a config written before the block may hold its own ``devices``.
+        return devices if is_devices_block(devices) else {}
+
+    @field_validator("devices")
+    @classmethod
+    def _device_identifiers(cls, devices: Dict[str, DeviceEntry]) -> Dict[str, DeviceEntry]:
+        seen: Dict[str, str] = {}
+        for identifier in devices:
+            if not _DEVICE_IDENTIFIER.fullmatch(identifier):
+                raise ValueError(f"'{identifier}' is not a device identifier; use letters, digits, '-' and '_'")
+            twin = seen.setdefault(identifier.casefold(), identifier)
+            if twin != identifier:
+                # Report and failure files carry the identifier, and some file systems ignore case.
+                raise ValueError(f"'{twin}' and '{identifier}' differ only by case")
+        return devices
+
+    @model_validator(mode="after")
+    def _no_driver_beside_devices(self) -> "Config":
+        enabled = [name for source in self.driver_sources for name, details in source.items() if details.enabled]
+        if self.devices and enabled:
+            raise ValueError(
+                f"driver_sources: {enabled[0]} is enabled beside a devices block; give each device its own driver and disable this one"
+            )
+        return self
 
     @field_validator("popup_rules")
     @classmethod

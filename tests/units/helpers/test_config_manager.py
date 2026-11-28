@@ -10,6 +10,8 @@ from optics_framework.helper import config_manager
 
 NOTICE = {"name": "notice", "detect": {"text_contains": ["Notice"]}, "action": {"type": "back"}}
 NOTICE_YAML = "{name: notice, detect: {text_contains: [Notice]}, action: {type: back}}"
+BROWSER = {"playwright": {"enabled": True, "capabilities": {}}}
+FINDER = {"playwright_find_element": {"enabled": True, "capabilities": {}}}
 
 
 class TestEditorSetsAnUnsetField:
@@ -22,12 +24,14 @@ class TestEditorSetsAnUnsetField:
 
         assert load_project_yaml(str(tmp_path / "config.yaml"))["name"] == "checkout_suite"
 
-    @pytest.mark.parametrize("field, kept, entered, reason", [
-        ("permissions", {"camera": "allow"}, "{camera: maybe}", "Input should be 'allow' or 'deny'"),
-        ("popup_rules", [NOTICE], f"[{NOTICE_YAML}, {NOTICE_YAML}]", "popup_rules: rule names must be unique"),
-    ], ids=["field type", "whole config"])
-    async def test_editor_shows_why_it_refuses_a_value_and_keeps_the_old_one(self, tmp_path, field, kept, entered, reason):
-        (tmp_path / "config.yaml").write_text(yaml.safe_dump({field: kept}), encoding="utf-8")
+    @pytest.mark.parametrize("field, written, entered, reason", [
+        ("permissions", {"permissions": {"camera": "allow"}}, "{camera: maybe}", "Input should be 'allow' or 'deny'"),
+        ("popup_rules", {"popup_rules": [NOTICE]}, f"[{NOTICE_YAML}, {NOTICE_YAML}]", "popup_rules: rule names must be unique"),
+        ("driver_sources", {"devices": {"PH1": {"driver_sources": [BROWSER]}}}, "['playwright']",
+         "playwright is enabled beside a devices block"),
+    ], ids=["field type", "whole config", "a driver beside a devices block"])
+    async def test_editor_shows_why_it_refuses_a_value_and_keeps_the_old_one(self, tmp_path, field, written, entered, reason):
+        (tmp_path / "config.yaml").write_text(yaml.safe_dump(written), encoding="utf-8")
         app = config_manager.ProjectConfigTUI(str(tmp_path))
         async with app.run_test() as pilot:
             app.query_one("#config-list").index = app.options.index(field)
@@ -39,7 +43,23 @@ class TestEditorSetsAnUnsetField:
             await pilot.press("s")
 
         saved = config_from(load_project_yaml(str(tmp_path / "config.yaml")))
-        assert getattr(saved, field) == getattr(config_from({field: kept}), field)
+        assert getattr(saved, field) == getattr(config_from(written), field)
+
+    @pytest.mark.parametrize("written, saved_devices", [
+        ({}, None),
+        ({"devices": {"PH1": {"driver_sources": [BROWSER], "element_sources": [FINDER], "values": {"username": "$RIDER"}}}},
+         {"PH1": {"driver_sources": [BROWSER], "elements_sources": [FINDER], "values": {"username": "$RIDER"}}}),
+        ({"driver_sources": [BROWSER], "devices": {"PH1": {"driver_sources": [BROWSER]}}}, {"PH1": {"driver_sources": [BROWSER]}}),
+    ], ids=["a config without devices", "a devices block", "a devices block that the config refuses"])
+    async def test_a_save_keeps_the_devices_block_and_adds_none(self, tmp_path, written, saved_devices):
+        (tmp_path / "config.yaml").write_text(yaml.safe_dump({"log_level": "INFO"} | written), encoding="utf-8")
+        app = config_manager.ProjectConfigTUI(str(tmp_path))
+        async with app.run_test() as pilot:
+            app.query_one("#config-list").index = app.options.index("name")
+            await pilot.press("space", *"ride_suite", "enter", "s")
+
+        assert load_project_yaml(str(tmp_path / "config.yaml")).get("devices") == saved_devices
+
 
 def _editor_setting(field, value):
     async def drive(app):
@@ -80,6 +100,14 @@ class TestConfigureOpensAConfigWithABadValue:
         monkeypatch.setattr(config_manager.Confirm, "ask", lambda *a, **k: False)
         config_manager.configure(str(tmp_path))
         assert shown in " ".join(capsys.readouterr().err.split())
+
+
+def test_the_guided_path_names_the_devices_block_that_an_overwrite_drops(tmp_path, monkeypatch):
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump({"devices": {"PH1": {"driver_sources": [BROWSER]}}}), encoding="utf-8")
+    asked = []
+    monkeypatch.setattr(config_manager.Confirm, "ask", lambda prompt, **_: asked.append(prompt))
+    config_manager.configure(str(tmp_path))
+    assert "devices block (PH1)" in asked[0]
 
 
 def test_configure_offers_to_replace_a_config_that_is_not_a_mapping(tmp_path, monkeypatch, capsys):
