@@ -175,16 +175,18 @@ class SeleniumDriver(DriverInterface):
                 browser_name=app_activity,
                 event_name=event_name,
             )
+        # With no URL named, go back to the session's own page, as a new session opens it.
+        url = app_identifier or self.browser_url
         try:
-            self.driver.get(self.browser_url)
+            self.driver.get(url)
             if event_name:
                 internal_logger.debug(
-                    f"Launching app at {self.browser_url} with event: {event_name}")
+                    f"Launching app at {url} with event: {event_name}")
                 self.event_sdk.capture_event(event_name)
             internal_logger.debug(
-                f"Launched web app at {self.browser_url} with event: {event_name}")
+                f"Launched web app at {url} with event: {event_name}")
         except Exception as e:
-            internal_logger.error(f"Failed to launch app at {self.browser_url}: {e}")
+            internal_logger.error(f"Failed to launch app at {url}: {e}")
             raise
 
     def launch_other_app(self, app_name: str, event_name):

@@ -173,3 +173,13 @@ async def test_mcp_session_offers_unique_locators_for_the_suite(server_url, monk
             )
         finally:
             await client.call_tool("terminate_session", {"session_id": session_id})
+
+
+def test_launch_app_opens_the_url_it_names_in_an_open_browser(tmp_path, server_url):
+    project = _project(tmp_path, server_url, [
+        f"Launch App,{(FIXTURE / 'orders.html').as_uri()}",
+        "Assert Presence,Your orders,2",
+        "Launch App",
+        "Assert Presence,Optics Store,2",
+    ])
+    assert run_project(project, use_printer=False) is True
