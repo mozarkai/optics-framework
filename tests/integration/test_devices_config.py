@@ -52,7 +52,7 @@ def test_a_command_that_runs_one_device_refuses_a_devices_block(project, cli, co
     (project / "config.yaml").write_text(SHARED + "devices:\n  PH1:" + BROWSER + "  PH2:" + BROWSER)
     result = cli(command, str(project))
     assert result.returncode != 0
-    assert "has a devices block" in " ".join((result.stdout + result.stderr).split())
+    assert "has a devices block" in " ".join((result.stdout + result.stderr).replace("│", " ").split())
 
 
 @pytest.mark.parametrize(("file", "devices"), [
