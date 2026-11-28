@@ -620,19 +620,24 @@ async def create_session(config: SessionConfig):
             apis=apis,
             templates=templates,
         )
-        reconfigure_logging(session_config)
-        internal_logger.info(
-            "Created session %s with sources: %s",
-            session_id,
-            _loggable(normalized)
-        )
+        try:
+            reconfigure_logging(session_config)
+            internal_logger.info(
+                "Created session %s with sources: %s",
+                session_id,
+                _loggable(normalized)
+            )
 
-        launch_request = ExecuteRequest(
-            mode=MODE_KEYWORD,
-            keyword=KEYWORD_LAUNCH_APP,
-            params=[]
-        )
-        driver_session = await execute_keyword(session_id, launch_request)
+            launch_request = ExecuteRequest(
+                mode=MODE_KEYWORD,
+                keyword=KEYWORD_LAUNCH_APP,
+                params=[]
+            )
+            driver_session = await execute_keyword(session_id, launch_request)
+        except BaseException:
+            # The caller never gets this id, so nothing else can end the session.
+            await asyncio.to_thread(session_manager.terminate_session, session_id)
+            raise
         return SessionResponse(
             session_id=session_id,
             driver_id=(driver_session.data or {}).get(KEY_RESULT)
